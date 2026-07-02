@@ -1,1 +1,416 @@
-"""Extract→Chunk→Enrich→Embed→Upsert; liest data/manifest.yaml — Phase 2."""
+"""Ingest-Pipeline: Extract -> Chunk -> Enrich -> Embed -> Payload.
+
+Liest ``data/manifest.yaml``, validiert Slugs gegen ``data/vokabular.yaml``
+(Fail-Fast bei unbekannten Slugs), extrahiert Dokumente, chunked, reichert
+mit Kontext an, erzeugt Embeddings und baut ChunkPayloads.
+
+Qdrant-Upsert erfolgt NICHT hier (Phase 3).
+"""
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
+from pathlib import Path
+from typing import Any
+
+import structlog
+import yaml
+
+from halle_gehirn.config import Settings, get_settings
+from halle_gehirn.extraction.base import ExtractedDoc
+from halle_gehirn.extraction.docling_extractor import DoclingExtractor
+from halle_gehirn.pipeline.chunker import Chunk, MarkdownChunker
+from halle_gehirn.vector_store.schema import (
+    Bereich,
+    ChunkPayload,
+    DocType,
+    Grad,
+    Herkunft,
+    Quelltyp,
+    Status,
+    Thema,
+    Vertraulichkeit,
+)
+
+logger = structlog.get_logger(__name__)
+
+_DATA_DIR = Path("data")
+_MANIFEST_PATH = _DATA_DIR / "manifest.yaml"
+_VOKABULAR_PATH = _DATA_DIR / "vokabular.yaml"
+_MANUAL_DIR = _DATA_DIR / "manual"
+
+
+class IngestError(Exception):
+    """Fehler in der Ingest-Pipeline."""
+
+
+class VokabularValidationError(IngestError):
+    """Unbekannter Slug in manifest.yaml (nicht in vokabular.yaml)."""
+
+
+@dataclass
+class IngestStats:
+    """Statistiken eines Ingest-Laufs."""
+
+    docs_total: int = 0
+    docs_success: int = 0
+    docs_skipped: int = 0
+    docs_failed: int = 0
+    chunks_total: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ManifestEntry:
+    """Ein Eintrag aus manifest.yaml (validiert)."""
+
+    datei: str
+    titel: str
+    doc_type: str
+    bereich: list[str]
+    herkunft: str
+    quelltyp: str = "primaer"
+    thema: list[str] = field(default_factory=list)
+    anlage: list[str] = field(default_factory=list)
+    projekt: list[str] = field(default_factory=list)
+    ansprechperson: list[str] = field(default_factory=list)
+    jahr: int | None = None
+    vertraulichkeit: str = "intern"
+    status: str = "final"
+    grad: str | None = None
+
+
+def load_manifest(path: Path | None = None) -> list[ManifestEntry]:
+    """Laedt und parst manifest.yaml.
+
+    Args:
+        path: Optionaler Pfad (Default: data/manifest.yaml).
+
+    Returns:
+        Liste von ManifestEntry-Objekten.
+
+    Raises:
+        IngestError: Datei nicht gefunden oder ungueltig.
+    """
+    p = path or _MANIFEST_PATH
+    if not p.exists():
+        raise IngestError(f"Manifest nicht gefunden: {p}")
+    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    if not raw or "dokumente" not in raw:
+        raise IngestError(f"Manifest leer oder ohne 'dokumente'-Key: {p}")
+    entries: list[ManifestEntry] = []
+    for doc in raw["dokumente"]:
+        entries.append(_parse_manifest_entry(doc))
+    return entries
+
+
+def _parse_manifest_entry(raw: dict[str, Any]) -> ManifestEntry:
+    """Parst einen einzelnen Manifest-Eintrag."""
+    bereich = raw.get("bereich", [])
+    if isinstance(bereich, str):
+        bereich = [bereich]
+    thema = raw.get("thema", [])
+    if isinstance(thema, str):
+        thema = [thema]
+    anlage = raw.get("anlage", [])
+    if isinstance(anlage, str):
+        anlage = [anlage]
+    projekt = raw.get("projekt", [])
+    if isinstance(projekt, str):
+        projekt = [projekt]
+    ansprechperson = raw.get("ansprechperson", [])
+    if isinstance(ansprechperson, str):
+        ansprechperson = [ansprechperson]
+
+    return ManifestEntry(
+        datei=raw["datei"],
+        titel=raw["titel"],
+        doc_type=raw["doc_type"],
+        bereich=bereich,
+        herkunft=raw["herkunft"],
+        quelltyp=raw.get("quelltyp", "primaer"),
+        thema=thema,
+        anlage=anlage,
+        projekt=projekt,
+        ansprechperson=ansprechperson,
+        jahr=raw.get("jahr"),
+        vertraulichkeit=raw.get("vertraulichkeit", "intern"),
+        status=raw.get("status", "final"),
+        grad=raw.get("grad"),
+    )
+
+
+def load_vokabular(path: Path | None = None) -> dict[str, set[str]]:
+    """Laedt vokabular.yaml als Registry.
+
+    Args:
+        path: Optionaler Pfad (Default: data/vokabular.yaml).
+
+    Returns:
+        Dict mit Facetten-Name -> Set erlaubter Slugs.
+
+    Raises:
+        IngestError: Datei nicht gefunden.
+    """
+    p = path or _VOKABULAR_PATH
+    if not p.exists():
+        raise IngestError(f"Vokabular nicht gefunden: {p}")
+    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    registry: dict[str, set[str]] = {}
+    for key in ("thema", "anlage", "projekt", "ansprechperson"):
+        section = raw.get(key, {})
+        registry[key] = set(section.keys()) if section else set()
+    return registry
+
+
+def validate_manifest_against_vokabular(
+    entries: list[ManifestEntry],
+    registry: dict[str, set[str]],
+) -> None:
+    """Validiert alle Manifest-Slugs gegen das Vokabular (Fail-Fast).
+
+    Args:
+        entries: Manifest-Eintraege.
+        registry: Vokabular-Registry.
+
+    Raises:
+        VokabularValidationError: Unbekannter Slug gefunden.
+    """
+    errors: list[str] = []
+    for entry in entries:
+        for slug in entry.thema:
+            if slug not in registry.get("thema", set()):
+                errors.append(
+                    f"{entry.datei}: unbekannter thema-Slug '{slug}'"
+                )
+        for slug in entry.anlage:
+            if slug not in registry.get("anlage", set()):
+                errors.append(
+                    f"{entry.datei}: unbekannter anlage-Slug '{slug}'"
+                )
+        for slug in entry.projekt:
+            if slug not in registry.get("projekt", set()):
+                errors.append(
+                    f"{entry.datei}: unbekannter projekt-Slug '{slug}'"
+                )
+        for slug in entry.ansprechperson:
+            if slug not in registry.get("ansprechperson", set()):
+                errors.append(
+                    f"{entry.datei}: unbekannter ansprechperson-Slug '{slug}'"
+                )
+    if errors:
+        msg = "Vokabular-Validierung fehlgeschlagen:\n" + "\n".join(errors)
+        raise VokabularValidationError(msg)
+
+
+def validate_enums(entries: list[ManifestEntry]) -> None:
+    """Validiert Enum-Felder gegen schema.py (Fail-Fast).
+
+    Args:
+        entries: Manifest-Eintraege.
+
+    Raises:
+        IngestError: Ungueltiger Enum-Wert.
+    """
+    errors: list[str] = []
+    for entry in entries:
+        _check_enum(entry.doc_type, DocType, "doc_type", entry.datei, errors)
+        _check_enum(entry.herkunft, Herkunft, "herkunft", entry.datei, errors)
+        _check_enum(entry.quelltyp, Quelltyp, "quelltyp", entry.datei, errors)
+        _check_enum(
+            entry.vertraulichkeit, Vertraulichkeit,
+            "vertraulichkeit", entry.datei, errors,
+        )
+        _check_enum(entry.status, Status, "status", entry.datei, errors)
+        if entry.grad:
+            _check_enum(entry.grad, Grad, "grad", entry.datei, errors)
+        for b in entry.bereich:
+            _check_enum(b, Bereich, "bereich", entry.datei, errors)
+        for t in entry.thema:
+            _check_enum(t, Thema, "thema", entry.datei, errors)
+    if errors:
+        msg = "Enum-Validierung fehlgeschlagen:\n" + "\n".join(errors)
+        raise IngestError(msg)
+
+
+def _check_enum(
+    value: str,
+    enum_cls: type[StrEnum],
+    field_name: str,
+    datei: str,
+    errors: list[str],
+) -> None:
+    """Prueft ob *value* ein gueltiger Enum-Wert ist."""
+    valid = {e.value for e in enum_cls}
+    if value not in valid:
+        errors.append(
+            f"{datei}: ungueltiger {field_name}-Wert '{value}' "
+            f"(erlaubt: {sorted(valid)})"
+        )
+
+
+def compute_source_hash(path: Path) -> str:
+    """Berechnet SHA256-Hash einer Datei.
+
+    Args:
+        path: Dateipfad.
+
+    Returns:
+        Hex-String des SHA256-Hashs.
+    """
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(8192), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def deterministic_chunk_id(source_hash: str, chunk_index: int) -> str:
+    """Erzeugt eine deterministische Chunk-ID.
+
+    Args:
+        source_hash: SHA256-Hash der Quelldatei.
+        chunk_index: Index des Chunks im Dokument.
+
+    Returns:
+        Hex-String der deterministischen ID.
+    """
+    return hashlib.sha256(
+        f"{source_hash}:{chunk_index}".encode()
+    ).hexdigest()[:32]
+
+
+def build_chunk_payload(
+    chunk: Chunk,
+    entry: ManifestEntry,
+    source_hash: str,
+    source_path: str,
+) -> ChunkPayload:
+    """Baut ein ChunkPayload aus Chunk + Manifest-Eintrag.
+
+    Args:
+        chunk: Der Chunk.
+        entry: Zugehoeriger Manifest-Eintrag.
+        source_hash: SHA256 der Quelldatei.
+        source_path: Pfad zur Quelldatei.
+
+    Returns:
+        Vollstaendiges ChunkPayload.
+    """
+    source_type = Path(entry.datei).suffix.lstrip(".").lower()
+    text_for_embedding = chunk.text
+    if chunk.context_prefix:
+        text_for_embedding = f"{chunk.context_prefix}\n\n{chunk.text}"
+    return ChunkPayload(
+        text=text_for_embedding,
+        text_raw=chunk.text,
+        context_prefix=chunk.context_prefix,
+        source_url=None,
+        source_type=source_type,
+        lang="de",
+        page=chunk.page,
+        table_ref=f"table_{chunk.chunk_index}" if chunk.is_table else None,
+        chunk_index=chunk.chunk_index,
+        char_start=chunk.char_start,
+        char_end=chunk.char_end,
+        ingested_at=datetime.now(tz=UTC).isoformat(),
+        source_hash=source_hash,
+        titel=entry.titel,
+        breadcrumb=" > ".join(chunk.headings) if chunk.headings else None,
+        doc_type=DocType(entry.doc_type),
+        bereich=[Bereich(b) for b in entry.bereich],
+        quelltyp=Quelltyp(entry.quelltyp),
+        herkunft=Herkunft(entry.herkunft),
+        jahr=entry.jahr,
+        thema=[Thema(t) for t in entry.thema],
+        anlage=entry.anlage,
+        projekt=entry.projekt,
+        ansprechperson=entry.ansprechperson,
+        vertraulichkeit=Vertraulichkeit(entry.vertraulichkeit),
+        status=Status(entry.status),
+        grad=Grad(entry.grad) if entry.grad else None,
+    )
+
+
+def run_ingest(
+    manifest_path: Path | None = None,
+    vokabular_path: Path | None = None,
+    manual_dir: Path | None = None,
+    settings: Settings | None = None,
+) -> tuple[list[ChunkPayload], IngestStats]:
+    """Fuehrt die Ingest-Pipeline aus (ohne Qdrant-Upsert).
+
+    Args:
+        manifest_path: Pfad zur manifest.yaml.
+        vokabular_path: Pfad zur vokabular.yaml.
+        manual_dir: Basisverzeichnis fuer Dokumente.
+        settings: Optionale Settings.
+
+    Returns:
+        Tuple aus (Liste aller ChunkPayloads, IngestStats).
+    """
+    s = settings or get_settings()
+    base = manual_dir or _MANUAL_DIR
+    entries = load_manifest(manifest_path)
+    registry = load_vokabular(vokabular_path)
+    validate_manifest_against_vokabular(entries, registry)
+    validate_enums(entries)
+    logger.info("ingest_validated", docs=len(entries))
+
+    extractor = DoclingExtractor(settings=s)
+    chunker = MarkdownChunker(settings=s)
+    stats = IngestStats(docs_total=len(entries))
+    all_payloads: list[ChunkPayload] = []
+
+    for entry in entries:
+        try:
+            payloads = _process_entry(entry, base, extractor, chunker)
+            all_payloads.extend(payloads)
+            stats.docs_success += 1
+            stats.chunks_total += len(payloads)
+        except FileNotFoundError as exc:
+            stats.docs_skipped += 1
+            stats.errors.append(f"{entry.datei}: {exc}")
+            logger.warning("ingest_doc_skipped", datei=entry.datei, error=str(exc))
+        except Exception as exc:
+            stats.docs_failed += 1
+            stats.errors.append(f"{entry.datei}: {exc}")
+            logger.error("ingest_doc_failed", datei=entry.datei, error=str(exc))
+
+    logger.info(
+        "ingest_done",
+        total=stats.docs_total,
+        success=stats.docs_success,
+        skipped=stats.docs_skipped,
+        failed=stats.docs_failed,
+        chunks=stats.chunks_total,
+    )
+    return all_payloads, stats
+
+
+def _process_entry(
+    entry: ManifestEntry,
+    base_dir: Path,
+    extractor: DoclingExtractor,
+    chunker: MarkdownChunker,
+) -> list[ChunkPayload]:
+    """Verarbeitet einen einzelnen Manifest-Eintrag."""
+    path = base_dir / entry.datei
+    if not path.exists():
+        raise FileNotFoundError(f"Datei nicht gefunden: {path}")
+    source_hash = compute_source_hash(path)
+    doc: ExtractedDoc = extractor.extract(path)
+    chunks: list[Chunk] = chunker.chunk(doc)
+    payloads = [
+        build_chunk_payload(chunk, entry, source_hash, str(path))
+        for chunk in chunks
+    ]
+    logger.info(
+        "ingest_doc_processed",
+        datei=entry.datei,
+        chunks=len(payloads),
+        hash=source_hash[:12],
+    )
+    return payloads

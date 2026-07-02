@@ -23,14 +23,16 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
 - [x] `ruff check` + `mypy` grün auf allen Phase-1-Modulen (70 source files)
 - [x] Tests: Docling-Extraktion, Boilerplate, Delta (16 tests, alle gruen)
 
-## Phase 2 — Indexierung
-- [ ] `pipeline/sentence_splitter.py` (deutsch, Abkürzungs-Schutz)
-- [ ] `pipeline/chunker.py` (Docling HybridChunker + Refine)
-- [ ] `pipeline/context_enricher.py` (Contextual Retrieval)
-- [ ] `embeddings/{provider,ollama_embedder,sparse_embedder,colbert_embedder}.py`
-- [ ] `pipeline/ingest.py` — **liest `data/manifest.yaml`, validiert Slugs gegen `vokabular.yaml`**
-- [ ] `src/scripts/reindex.py`
-- [ ] Tests: Chunk-Längen, Splitter, deterministische IDs, Manifest→Payload
+## Phase 2 — Indexierung  ✅
+- [x] `pipeline/sentence_splitter.py` (deutsch, Abkürzungs-Schutz)
+- [x] `pipeline/chunker.py` (MarkdownChunker: Heading-Sections + Satz-Split + tiktoken)
+- [x] `pipeline/context_enricher.py` (Contextual Retrieval via Ollama)
+- [x] `embeddings/{provider,ollama_embedder,sparse_embedder,colbert_embedder}.py`
+- [x] `pipeline/ingest.py` — **liest `data/manifest.yaml`, validiert Slugs gegen `vokabular.yaml`**
+- [x] `src/scripts/reindex.py`
+- [x] `ruff check` + `mypy` grün auf 70 source files
+- [x] Tests: Splitter (10), Chunker (9), Ingest (16) — 35 Tests, alle gruen
+- [x] End-to-End-Verifikation: Test-PDF → 3 Chunks, ChunkPayload komplett, Sparse BM25 OK, Fail-Fast OK
 
 ## Phase 3 — Vector-Store (Qdrant Hybrid)
 - [ ] `vector_store/qdrant_client.py` (Factory, upsert, hybrid_query, snapshot, erasure)
