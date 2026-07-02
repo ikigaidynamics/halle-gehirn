@@ -1,7 +1,8 @@
 """Reindex-Script: Fuehrt die Ingest-Pipeline aus.
 
 Laedt Dokumente aus data/manifest.yaml, validiert, chunked, baut
-Payloads und (optional in Phase 3) upserted in Qdrant.
+Payloads und upserted in Qdrant. --reset loescht/erstellt NUR die
+konfigurierte Collection (QDRANT_COLLECTION), NIEMALS andere.
 
 Usage:
     python -m scripts.reindex [--reset] [--dry-run]
@@ -9,15 +10,21 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
-from collections.abc import Sequence
+import asyncio
 from pathlib import Path
 
 import structlog
 
-from halle_gehirn.config import get_settings
+from halle_gehirn.config import Settings, get_settings
+from halle_gehirn.embeddings.ollama_embedder import OllamaEmbedder
+from halle_gehirn.embeddings.sparse_embedder import FastEmbedSparseEmbedder
 from halle_gehirn.observability.logging_config import configure_logging
 from halle_gehirn.pipeline.ingest import IngestError, run_ingest
+from halle_gehirn.vector_store.qdrant_client import (
+    reset_collection,
+    upsert_chunks,
+)
+from halle_gehirn.vector_store.schema import ChunkPayload
 
 logger = structlog.get_logger(__name__)
 
@@ -70,21 +77,45 @@ def main() -> None:
     _print_summary(stats, payloads, args.dry_run)
 
     if payloads and not args.dry_run:
-        _save_payloads(payloads)
+        asyncio.run(_embed_and_upsert(payloads, settings))
 
 
-def _reset_collection(settings: object) -> None:
-    """Setzt die Qdrant-Collection zurueck (nur konfigurierte)."""
-    collection = getattr(settings, "qdrant_collection", "halle_wissen")
+def _reset_collection(settings: Settings) -> None:
+    """Setzt AUSSCHLIESSLICH die konfigurierte Collection zurueck."""
     logger.warning(
-        "collection_reset_requested",
-        collection=collection,
-        note="Qdrant-Reset wird in Phase 3 implementiert",
+        "collection_reset_start",
+        collection=settings.qdrant_collection,
+    )
+    reset_collection()
+    logger.info(
+        "collection_reset_done",
+        collection=settings.qdrant_collection,
     )
 
 
+async def _embed_and_upsert(
+    payloads: list[ChunkPayload],
+    settings: Settings,
+) -> None:
+    """Erzeugt Embeddings und upserted in Qdrant."""
+    texts = [p.text for p in payloads]
+
+    dense_embedder = OllamaEmbedder(settings=settings)
+    sparse_embedder = FastEmbedSparseEmbedder(settings=settings)
+
+    logger.info("embedding_start", chunks=len(texts))
+    dense_vecs = await dense_embedder.embed(texts)
+    sparse_vecs = sparse_embedder.embed(texts)
+    logger.info("embedding_done", dense=len(dense_vecs), sparse=len(sparse_vecs))
+
+    total = upsert_chunks(payloads, dense_vecs, sparse_vecs)
+    logger.info("upsert_complete", total=total)
+
+
 def _print_summary(
-    stats: object, payloads: Sequence[object], dry_run: bool,
+    stats: object,
+    payloads: list[ChunkPayload],
+    dry_run: bool,
 ) -> None:
     """Gibt eine Zusammenfassung des Ingest-Laufs aus."""
     logger.info(
@@ -101,23 +132,6 @@ def _print_summary(
     if errors:
         for err in errors:
             logger.warning("reindex_error", error=err)
-
-
-def _save_payloads(payloads: Sequence[object]) -> None:
-    """Speichert Payloads als JSON (Debug/Verification)."""
-    out = Path("data/raw/ingest_payloads.json")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    entries = []
-    for p in payloads:
-        if hasattr(p, "model_dump"):
-            entries.append(p.model_dump())
-        else:
-            entries.append(str(p))
-    out.write_text(
-        json.dumps(entries, indent=2, ensure_ascii=False, default=str),
-        encoding="utf-8",
-    )
-    logger.info("payloads_saved", path=str(out), count=len(entries))
 
 
 if __name__ == "__main__":

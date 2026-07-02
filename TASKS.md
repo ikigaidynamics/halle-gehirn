@@ -34,10 +34,12 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
 - [x] Tests: Splitter (10), Chunker (9), Ingest (16) — 35 Tests, alle gruen
 - [x] End-to-End-Verifikation: Test-PDF → 3 Chunks, ChunkPayload komplett, Sparse BM25 OK, Fail-Fast OK
 
-## Phase 3 — Vector-Store (Qdrant Hybrid)
-- [ ] `vector_store/qdrant_client.py` (Factory, upsert, hybrid_query, snapshot, erasure)
-- [ ] `src/scripts/snapshot.py`
-- [ ] Tests: Collection, Upsert+Retrieve, Hybrid-Query fusioniert
+## Phase 3 — Vector-Store (Qdrant Hybrid)  ✅
+- [x] `vector_store/qdrant_client.py` (Factory, upsert, hybrid_query, snapshot, erasure, delete_by_source_hash)
+- [x] `src/scripts/snapshot.py` (create/list CLI)
+- [x] `src/scripts/reindex.py` verdrahtet: --reset loescht/erstellt NUR QDRANT_COLLECTION
+- [x] Tests: Collection (4), Upsert+Retrieve (5), Hybrid-Query fusioniert (3), Erasure (2), Filter (3) — 17 Tests, alle gruen
+- [x] End-to-End-Verifikation: Test-PDF → Embed → Upsert halle_wissen → Hybrid-Query (RRF, 3 Treffer mit Scores) → --reset beweist: nur halle_wissen angefasst, cottbus_buergerservice + btu_transfer unberuehrt
 
 ## Phase 4 — Retrieval
 - [ ] `embeddings/reranker.py` (logprobs/cross_encoder)
