@@ -13,14 +13,15 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
 - [x] `data/vokabular.yaml` + `data/manifest.yaml` (Vorlage) + `docs/taxonomie.md`
 - [x] `ruff.toml` + `mypy.ini` + `observability/logging_config.py`
 - [x] `PLANNING.md` + `TASKS.md` + `README.md` + `.gitignore`
-- [ ] `uv sync` lauffähig · `ruff check` + `mypy` grün auf den Stubs (lokal prüfen)
+- [x] `pip install -e ".[dev]"` lauffähig · `ruff check` + `mypy` grün auf den Stubs
 
 ## Phase 1 — Extraction (Docling) + Crawler
-- [ ] `extraction/base.py` (Extractor-Protocol + ExtractedDoc)
-- [ ] `extraction/docling_extractor.py` (PRIMÄR)
-- [ ] `extraction/{html_extractor,boilerplate,title_extractor,manual_loader}.py`
-- [ ] `scraper/{fetcher,js_fetcher}.py` (sekundär, Delta)
-- [ ] Tests: Docling-Extraktion, Boilerplate, Delta
+- [x] `extraction/base.py` (Extractor-Protocol + ExtractedDoc + TableBlock)
+- [x] `extraction/docling_extractor.py` (PRIMÄR — DoclingExtractor)
+- [x] `extraction/{html_extractor,boilerplate,title_extractor,manual_loader}.py`
+- [x] `scraper/{fetcher,js_fetcher}.py` (sekundär, Delta + Playwright)
+- [x] `ruff check` + `mypy` grün auf allen Phase-1-Modulen (70 source files)
+- [x] Tests: Docling-Extraktion, Boilerplate, Delta (16 tests, alle gruen)
 
 ## Phase 2 — Indexierung
 - [ ] `pipeline/sentence_splitter.py` (deutsch, Abkürzungs-Schutz)

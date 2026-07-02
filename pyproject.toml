@@ -24,6 +24,7 @@ dependencies = [
     "ollama",
     "tiktoken",
     "pyyaml",
+    "trafilatura",
     "opentelemetry-sdk",
     "opentelemetry-instrumentation-fastapi",
     "ragas",
@@ -31,6 +32,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+js = [
+    "playwright",
+]
 dev = [
     "pytest",
     "pytest-asyncio",
@@ -39,6 +43,7 @@ dev = [
     "mypy",
     "types-requests",
     "types-PyYAML",
+    "reportlab",
 ]
 
 [tool.hatch.build.targets.wheel]

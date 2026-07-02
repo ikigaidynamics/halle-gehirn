@@ -11,7 +11,7 @@ Kombinationen (Self-Querying), nicht über einen Speicherbaum.
 """
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
@@ -30,7 +30,7 @@ from halle_gehirn.config import get_settings
 
 
 # ────────────────────────── Geschlossene Facetten ──────────────────────────
-class Bereich(str, Enum):
+class Bereich(StrEnum):
     """Die „Dreifaltigkeit" + Infrastruktur (mehrwertig)."""
 
     TRANSFER = "transfer"
@@ -39,7 +39,7 @@ class Bereich(str, Enum):
     INFRASTRUKTUR = "infrastruktur"
 
 
-class Thema(str, Enum):
+class Thema(StrEnum):
     """Offizielle Forschungsschwerpunkte des Lehrstuhls (mehrwertig)."""
 
     MRK = "mensch_roboter_kollaboration"
@@ -47,7 +47,7 @@ class Thema(str, Enum):
     VST = "vernetzte_steuerungstechnik"
 
 
-class DocType(str, Enum):
+class DocType(StrEnum):
     """Semantische Dokumentsorte (einwertig)."""
 
     ABSCHLUSSARBEIT = "abschlussarbeit"
@@ -65,7 +65,7 @@ class DocType(str, Enum):
     SONSTIGES = "sonstiges"
 
 
-class Quelltyp(str, Enum):
+class Quelltyp(StrEnum):
     """Provenienz / Vertrauensstufe (einwertig). Speist Ampel & Zitate."""
 
     PRIMAER = "primaer"
@@ -73,7 +73,7 @@ class Quelltyp(str, Enum):
     SYNTHETISCH = "synthetisch"
 
 
-class Herkunft(str, Enum):
+class Herkunft(StrEnum):
     """Ownership / produzierende Einheit (einwertig)."""
 
     LEHRSTUHL_AT = "lehrstuhl_at"
@@ -83,7 +83,7 @@ class Herkunft(str, Enum):
     EXTERN = "extern"
 
 
-class Vertraulichkeit(str, Enum):
+class Vertraulichkeit(StrEnum):
     """Zugriffs-/Governance-Stufe (vorgezogen, Default intern)."""
 
     OFFEN = "offen"
@@ -91,14 +91,14 @@ class Vertraulichkeit(str, Enum):
     VERTRAULICH = "vertraulich"
 
 
-class Grad(str, Enum):
+class Grad(StrEnum):
     """Nur bei doc_type == ABSCHLUSSARBEIT."""
 
     BACHELOR = "bachelor"
     MASTER = "master"
 
 
-class Status(str, Enum):
+class Status(StrEnum):
     FINAL = "final"
     IN_ARBEIT = "in_arbeit"
 

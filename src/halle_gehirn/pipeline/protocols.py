@@ -11,7 +11,8 @@ referenziert, um Zirkularimporte im Bootstrap zu vermeiden.
 """
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable

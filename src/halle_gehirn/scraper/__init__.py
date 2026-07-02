@@ -1,1 +1,1 @@
-"""Crawler (httpx, sekundär)."""
+"""Crawler (httpx, sekundaer). Primaerquelle: data/manual/."""
