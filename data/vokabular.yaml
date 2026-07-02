@@ -1,0 +1,37 @@
+# data/vokabular.yaml — kontrolliertes Vokabular für halle_wissen
+#
+# thema:          GESICHERT (offizielle Forschungsschwerpunkte des Lehrstuhls, b-tu.de)
+# anlage:         VORLÄUFIG — gegen die Demonstrator-API abgleichen und die
+#                 exakten Geräte-IDs der API als Slugs übernehmen (→ verzahnt Säule 1 mit
+#                 der OPC-UA-Live-Schicht über dieselben IDs). Nur Standort Cottbus.
+# projekt/person: Startbestand, append-only erweitern.
+
+# ── thema · Forschungsschwerpunkt-Achse (grob, gesichert) ──
+thema:
+  mensch_roboter_kollaboration: "Mensch-Roboter-Kollaboration"
+  mensch_maschine_interaktion:  "Simulationsgestützte Mensch-Maschine-Interaktion"
+  vernetzte_steuerungstechnik:  "Vernetzte Steuerungstechnik"
+
+# ── anlage · Hallengeräte Cottbus (VORLÄUFIG — Slugs = Demonstrator-API-Geräte-IDs) ──
+anlage:
+  # MDZ-Demonstratoren (Modellfabrik Cottbus)
+  vier_gewinnt:           "Roboterlösung 'Vier gewinnt' (MRK + KI)"
+  ftf_agv:                "Fahrerloses Transportsystem / AGV"
+  gestenerkennung:        "Assistenzsystem mit Gestenerkennung"
+  # Roboter-/Werkzeugmaschinenlabor
+  kuka_industrieroboter:  "KUKA-Industrieroboter (Roboterlabor)"
+  leichtbauroboter:       "Leichtbauroboter / Cobot"
+  kooperierende_roboter:  "Kooperierende Roboter (flexible Fertigungszelle)"
+  werkzeugmaschine:       "Werkzeugmaschine (Werkzeugmaschinenlabor)"
+  # Aus dem Meeting genannt, auf der Website nicht verifiziert:
+  predictive_maintenance: "Predictive-Maintenance-Prüfstand"
+
+# ── projekt · benannte Vorhaben (Startbestand) ──
+projekt:
+  direct: "DIRECT — Forschungsprojekt"
+  lufo:   "LuFo — Luftfahrtforschungsprogramm (Bork)"
+
+# ── ansprechperson · Autor/Kontakt (Startbestand) ──
+ansprechperson:
+  berger: "Prof. Dr.-Ing. Ulrich Berger (Lehrstuhlinhaber)"
+  bork:   "Christian Bork"

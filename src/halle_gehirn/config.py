@@ -1,0 +1,92 @@
+"""Zentrale Konfiguration für Halle-Gehirn.
+
+Liest `.env` (via pydantic-settings) und exportiert alle Variablen aus
+CLAUDE.md Kap. 6 als typisierte Felder mit Defaults. Einzige Quelle der
+Wahrheit für Laufzeit-Konfiguration — keine hardcodierten Werte anderswo.
+"""
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Alle Laufzeit-Parameter, aus `.env` überschreibbar."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    # ── LLM & Embedding (lokal, Ollama) ──
+    ollama_url: str = "http://localhost:11434"
+    llm_model: str = "qwen3:14b"
+    embedding_model: str = "qwen3-embedding:0.6b"
+    embedding_dim: int = 1024
+    sparse_model: str = "Qdrant/bm25"
+    sparse_language: str = "german"
+    use_colbert: bool = False
+
+    # ── Retrieval / Hybrid ──
+    top_k_initial: int = 20
+    top_k_final: int = 5
+    fusion: Literal["rrf", "dbsf"] = "rrf"
+    use_mmr: bool = True
+    reranker: Literal["logprobs", "cross_encoder", "cohere"] = "logprobs"
+    use_query_transform: bool = False
+    use_router: bool = True
+
+    # ── Confidence-Gate ──
+    conf_green: float = 0.7
+    conf_yellow: float = 0.4
+
+    # ── Indexierung ──
+    use_contextual_retrieval: bool = True
+    chunk_target_tokens: int = 512
+    chunk_max_tokens: int = 768
+    context_concurrency: int = 4
+
+    # ── Extraction (Docling) ──
+    docling_ocr: bool = True
+    docling_table_mode: Literal["fast", "accurate"] = "accurate"
+    docling_do_figures: bool = True
+
+    # ── Generierung ──
+    streaming: bool = True
+    memory_window: int = 5
+    use_summary_memory: bool = True
+    use_grounding_check: bool = True
+
+    # ── Qdrant ──
+    qdrant_url: str = "http://localhost:6335"
+    qdrant_collection: str = "halle_wissen"
+    qdrant_quantization: str = "int8"
+
+    # ── Compliance / Governance ──
+    audit_log: bool = True
+    on_prem: bool = True
+    contact_fallback_url: str = (
+        "https://www.b-tu.de/fg-automatisierungstechnik/team/kontakt"
+    )
+
+    # ── Observability ──
+    log_level: str = "INFO"
+    otel_enabled: bool = True
+
+    # ── Crawler (sekundär) ──
+    crawler_domains: str = "b-tu.de"
+    crawler_rate_limit: float = 1.0
+    crawler_max_pages: int = 2000
+
+    # ── Halle-Gehirn / Branding ──
+    bot_name: str = "Jarvis"
+    primary_color: str = "#000000"  # TODO: BTU-Hausfarbe
+    language: str = "de"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Gecachte Settings-Instanz (einzige Instanziierungsstelle)."""
+    return Settings()

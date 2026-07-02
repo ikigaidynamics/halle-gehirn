@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets & lokale Konfiguration
+.env
+
+# Daten (roh) — nicht ins Repo
+data/raw/*
+!data/raw/.gitkeep
+data/manual/**/*
+!data/manual/**/.gitkeep
+
+# Build/Frontend
+dist/
+node_modules/
+
+# OS
+.DS_Store

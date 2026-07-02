@@ -1,0 +1,47 @@
+# data/manifest.yaml — Kurations-Metadaten je Quelldokument.
+#
+# ingest.py liest dieses Manifest und schreibt die Felder ins Qdrant-Payload.
+# Auto-Felder (text, chunk_index, source_hash, …) füllt die Pipeline selbst.
+# Werte für doc_type/bereich/quelltyp/herkunft: siehe docs/taxonomie.md.
+# Werte für anlage/projekt/ansprechperson: siehe data/vokabular.yaml (Registry).
+# Leere Facetten (z. B. anlage bei einem Flyer) einfach weglassen.
+#
+# ── STARTMENGE (3 Sorten, decken verschiedene Bereiche + eine Anlage ab) ──
+
+dokumente:
+  # ① Abschlussarbeit — lehre + forschung, maschinenbezogen
+  - datei: "abschlussarbeiten/2024_mustermann_greifroboter.pdf"
+    titel: "Bahnplanung für den Greifroboter unter Störeinflüssen"
+    doc_type: abschlussarbeit
+    grad: master
+    bereich: [lehre, forschung]
+    thema: [mensch_roboter_kollaboration]
+    anlage: [greifroboter]
+    projekt: [direct]
+    ansprechperson: [bork]
+    jahr: 2024
+    herkunft: lehrstuhl_at
+    quelltyp: primaer
+    vertraulichkeit: intern
+    status: final
+
+  # ② MDZ-Transfer — reiner Transfer, öffentlich
+  - datei: "transfer/mdz_flyer_ki-mittelstand.pdf"
+    titel: "KI im Mittelstand — MDZ-Flyer"
+    doc_type: flyer
+    bereich: [transfer]
+    herkunft: mdz
+    jahr: 2025
+    quelltyp: primaer
+    vertraulichkeit: offen
+
+  # ③ Anlagendokumentation — infrastruktur, extern (Hersteller)
+  - datei: "anlagen/handbuch_predictive_maintenance.pdf"
+    titel: "Betriebshandbuch Predictive-Maintenance-Prüfstand"
+    doc_type: handbuch
+    bereich: [infrastruktur]
+    thema: [vernetzte_steuerungstechnik]
+    anlage: [predictive_maintenance]
+    herkunft: extern
+    quelltyp: primaer
+    vertraulichkeit: intern

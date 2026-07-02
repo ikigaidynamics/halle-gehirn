@@ -1,0 +1,1 @@
+"""API-Schicht (FastAPI, SSE)."""
