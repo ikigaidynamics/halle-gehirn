@@ -193,6 +193,7 @@ class RetrievalHit:
     point_id: str
     score: float
     payload: dict[str, Any] = field(default_factory=dict)
+    rerank_score: float = 0.0
 
 
 def hybrid_query(
@@ -291,7 +292,7 @@ def _build_filter(filters: dict[str, Any]) -> Filter:
             conditions.append(
                 FieldCondition(key=key, match=MatchValue(value=value))
             )
-    return Filter(must=conditions)
+    return Filter(must=conditions)  # type: ignore[arg-type]
 
 
 # ────────────────────────── Erasure ──────────────────────────
@@ -346,6 +347,7 @@ def create_snapshot(
     c = client or get_qdrant_client()
     s = get_settings()
     info = c.create_snapshot(collection_name=s.qdrant_collection)
+    assert info is not None, "Snapshot-Erstellung fehlgeschlagen"
     name = info.name
     logger.info("snapshot_created", name=name, collection=s.qdrant_collection)
     return name

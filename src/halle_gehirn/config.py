@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     top_k_final: int = 5
     fusion: Literal["rrf", "dbsf"] = "rrf"
     use_mmr: bool = True
+    mmr_lambda: float = 0.7
     reranker: Literal["logprobs", "cross_encoder", "cohere"] = "logprobs"
+    rerank_num_predict: int = 8  # Ja/Nein braucht nur 1 Token
+    rerank_top_logprobs: int = 5
     use_query_transform: bool = False
     use_router: bool = True
 
