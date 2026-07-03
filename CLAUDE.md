@@ -43,7 +43,7 @@ Stubs jetzt (siehe PLANNING.md · „Roadmap zum Gesamtsystem").
 | Vektor-DB | **Qdrant** — Named Vectors (dense+sparse) | **Hybrid Query API + RRF**, Payload-Indizes, Quantization |
 | Reranker | **Logprobs-Reranker** (Ollama) | On-Prem |
 | Confidence-Gate | Ampel (>0.7 / 0.4–0.7 / <0.4) | Anti-Halluzination Stufe 1 |
-| LLM | Ollama `qwen3:14b` | Lokal (Uni-GPU), DSGVO-konform |
+| LLM | Ollama `qwen3:8b` | Lokal (Uni-GPU), DSGVO-konform |
 | Generierung | Anti-Halluzination + **Citation** + Grounding | URL-Whitelist + Source-IDs + Faithfulness |
 | Streaming | **SSE Token-by-Token** | Default an |
 | Memory | Window (5) + Summarization | Multi-Turn |

@@ -57,9 +57,12 @@ class Settings(BaseSettings):
 
     # ── Generierung ──
     streaming: bool = True
+    gen_num_predict: int = 2048  # Grosszuegig: think-Block + sichtbare Antwort
+    gen_temperature: float = 0.3
     memory_window: int = 5
     use_summary_memory: bool = True
     use_grounding_check: bool = True
+    grounding_threshold: float = 0.5
 
     # ── Qdrant ──
     qdrant_url: str = "http://localhost:6335"

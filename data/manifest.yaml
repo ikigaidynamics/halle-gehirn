@@ -45,3 +45,15 @@ dokumente:
     herkunft: extern
     quelltyp: primaer
     vertraulichkeit: intern
+
+  # ④ UR10e Betriebsanleitung — infrastruktur, extern (Hersteller)
+  - datei: "anlagen/test_anlage_roboter.pdf"
+    titel: "Betriebsanleitung UR10e Roboterarm"
+    doc_type: handbuch
+    bereich: [infrastruktur]
+    thema: [mensch_roboter_kollaboration]
+    anlage: [ur10e]
+    herkunft: extern
+    quelltyp: primaer
+    vertraulichkeit: offen
+    status: final

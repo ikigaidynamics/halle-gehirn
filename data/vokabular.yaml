@@ -23,8 +23,10 @@ anlage:
   leichtbauroboter:       "Leichtbauroboter / Cobot"
   kooperierende_roboter:  "Kooperierende Roboter (flexible Fertigungszelle)"
   werkzeugmaschine:       "Werkzeugmaschine (Werkzeugmaschinenlabor)"
+  greifroboter:           "Greifroboter (Modellfabrik)"
   # Aus dem Meeting genannt, auf der Website nicht verifiziert:
   predictive_maintenance: "Predictive-Maintenance-Prüfstand"
+  ur10e:                  "Universal Robots UR10e (Modellfabrik)"
 
 # ── projekt · benannte Vorhaben (Startbestand) ──
 projekt:
