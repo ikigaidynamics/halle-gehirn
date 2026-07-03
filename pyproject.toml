@@ -35,6 +35,9 @@ dependencies = [
 js = [
     "playwright",
 ]
+ui = [
+    "streamlit",
+]
 dev = [
     "pytest",
     "pytest-asyncio",

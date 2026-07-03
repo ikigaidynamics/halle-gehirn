@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     crawler_rate_limit: float = 1.0
     crawler_max_pages: int = 2000
 
+    # ── API ──
+    admin_api_key: str = "change-me-in-production"
+    cors_origins: str = "http://localhost:8501,http://localhost:3000"
+    rate_limit_rpm: int = 60
+
     # ── Halle-Gehirn / Branding ──
     bot_name: str = "Jarvis"
     primary_color: str = "#000000"  # TODO: BTU-Hausfarbe

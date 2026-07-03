@@ -41,21 +41,26 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
 - [x] Tests: Collection (4), Upsert+Retrieve (5), Hybrid-Query fusioniert (3), Erasure (2), Filter (3) — 17 Tests, alle gruen
 - [x] End-to-End-Verifikation: Test-PDF → Embed → Upsert halle_wissen → Hybrid-Query (RRF, 3 Treffer mit Scores) → --reset beweist: nur halle_wissen angefasst, cottbus_buergerservice + btu_transfer unberuehrt
 
-## Phase 4 — Retrieval
-- [ ] `embeddings/reranker.py` (logprobs/cross_encoder)
-- [ ] `retrieval/{query_transform,router,retriever}.py`
-- [ ] `pipeline/stages/confidence.py` (Ampel)
-- [ ] Tests: Hybrid+Rerank, Confidence-Schwellen, Router
+## Phase 4 — Retrieval  ✅
+- [x] `embeddings/reranker.py` (Logprobs-Reranker, Ollama-basiert)
+- [x] `retrieval/{query_transform,router,retriever}.py` (HybridRetriever, KeywordRouter, OllamaQueryTransformer)
+- [x] `pipeline/stages/confidence.py` (Ampel: gruen/gelb/rot)
+- [x] Tests: Hybrid+Rerank, Confidence-Schwellen, Router (test_retrieval.py, alle gruen)
+- [x] End-to-End-Verifikation: Live-Query mit Reranking + Confidence-Gate
 
-## Phase 5 — Generierung
-- [ ] `generator/{ollama_client,prompts,smalltalk,memory}.py` (Persona: Jarvis)
-- [ ] `pipeline/stages/{validation,grounding,guardrails}.py`
-- [ ] Tests: Refusal, Citation-Pflicht, Prompt-Injection, Smalltalk
+## Phase 5 — Generierung  ✅
+- [x] `generator/{ollama_client,prompts,smalltalk,memory}.py` (Persona: Jarvis, SSE-Streaming, Think-Tag-Filterung)
+- [x] `pipeline/stages/{validation,grounding,guardrails}.py` (URL-Whitelist, Faithfulness, Prompt-Injection-Abwehr, PII-Redaktion)
+- [x] Tests: Refusal, Citation-Pflicht, Prompt-Injection, Smalltalk (test_generation.py, alle gruen)
+- [x] End-to-End-Verifikation: Live-Generierung mit Streaming + Grounding-Check
 
-## Phase 6 — API
-- [ ] `pipeline/{factory,orchestrator}.py`
-- [ ] `api/{schemas,main, routes/{chat,health,admin}}.py`
-- [ ] Tests: /chat(/stream), /ready, Admin-Auth
+## Phase 6 — API  ✅
+- [x] `pipeline/{factory,orchestrator}.py` (QueryPipeline, QueryOrchestrator mit 10-Stage-Pipeline)
+- [x] `api/{schemas,main, routes/{chat,health,admin}}.py` (FastAPI, CORS, Rate-Limit, SSE)
+- [x] `governance/audit.py` (StructlogAuditLogger)
+- [x] `ui/streamlit_app.py` (Chat-UI mit SSE-Streaming, Konfidenz-Ampel, Quellen)
+- [x] Tests: /chat(/stream), /ready, Admin-Auth (test_api.py + test_orchestrator.py, 19 Tests gruen)
+- [x] Live-Verifikation: /health=ok, /ready=ready (Qdrant+Ollama true), Admin 401/200, Chat JSON + SSE-Streaming mit Quellen + Citations
 
 ## Phase 8 — Evaluation  (vorgezogen)
 - [ ] `data/eval/golden_qa.yaml` + `eval/{golden_qa,metrics,runner}.py`
