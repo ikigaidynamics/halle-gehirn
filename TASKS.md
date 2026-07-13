@@ -104,9 +104,18 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
       (BOILERPLATE_CLEAN, Default an). Tabellen-Fake-Offsets → None
       (ChunkPayload.char_start/end optional). Eval um page_coverage
       erweitert. 15 neue Tests; E2E Test-PDF: page_coverage 100 %.
-- [ ] Zwischenaudit-Arbeitspakete WP4/WP6/WP7: siehe
-      `docs/audit_2026-07_zwischenstand.md` (WP6 API/Frontend →
-      WP4 Titelblatt-Parser → WP7 Ops).
+- [x] **WP6 — API-Vertrag & Frontend-Politur:** `schemas.Source` um
+      datei/doc_type/breadcrumb erweitert (Vertrags-Test: /chat ==
+      /chat/stream) · Snippets serverseitig auf ~300 Zeichen gekuerzt ·
+      `format_context` gibt Seite + Kapitel-Breadcrumb an das LLM
+      („[S1] Titel (S. 12 · Kapitel)"; Regel 7: Quellenliste mit
+      Seitenangabe) · Sidebar-Facetten-Filter (doc_type/bereich/anlage/
+      jahr, `ui/_filter_sidebar.py`) gehen als filters an die API ·
+      Branding aus Config (BOT_NAME, PRIMARY_COLOR=#c41230 statt
+      #000000-TODO). 8 neue Tests (test_api_contract.py).
+- [ ] Zwischenaudit-Arbeitspakete WP4/WP7: siehe
+      `docs/audit_2026-07_zwischenstand.md` (WP4 Titelblatt-Parser →
+      WP7 Ops).
 
 ## Phase 9 — Compliance & Security  (vorgezogen)
 - [ ] `governance/{audit,consent,erasure}.py`

@@ -23,7 +23,8 @@ Erfinde NICHTS, rate NICHT.
 4. Antworte auf Deutsch, praezise und sachlich.
 5. Ziellaenge: 3-8 Saetze (~500 Tokens). Bei komplexen Fragen mehr.
 6. Vermeide Wiederholungen und Fuellwoerter.
-7. Nenne am Ende kurz die verwendeten Quellen mit Titel.
+7. Nenne am Ende kurz die verwendeten Quellen mit Titel und — falls in \
+der Quelle angegeben — Seite und Kapitel (z.B. "S. 42, Kap. 3.2").
 8. Verwende NUR URLs, die in den Quellen stehen. Erfinde keine Links."""
 
 REFUSAL_TEMPLATE_DE = """\
@@ -91,11 +92,33 @@ Quellen:
 
 Frage: {query}"""
 
-_SOURCE_TEMPLATE = "[S{idx}] {titel}\n{text}"
+_SOURCE_TEMPLATE = "[S{idx}] {titel}{location}\n{text}"
+
+
+def _format_location(payload: dict[str, Any]) -> str:
+    """Baut den Fundstellen-Zusatz „ (S. 42 · Kap > Unterkap)" einer Quelle.
+
+    Seite und Breadcrumb stammen aus dem Qdrant-Payload (WP3/WP1) und
+    erlauben dem LLM praezise Fundstellen-Angaben in der Antwort.
+    """
+    parts: list[str] = []
+    page = payload.get("page")
+    if page is not None:
+        parts.append(f"S. {page}")
+    breadcrumb = payload.get("breadcrumb")
+    if breadcrumb:
+        parts.append(str(breadcrumb))
+    if not parts:
+        return ""
+    return " (" + " · ".join(parts) + ")"
 
 
 def format_context(hits: list[Any]) -> str:
     """Formatiert RetrievalHits als nummerierten Quellen-Block.
+
+    Jede Quelle traegt — falls vorhanden — Seite und Kapitel-Breadcrumb,
+    damit das LLM Fundstellen benennen kann. Citation-Format bleibt
+    ``[S1]`` (Vorgabe des CitationValidators).
 
     Args:
         hits: Liste von RetrievalHit-Objekten mit payload.
@@ -108,7 +131,12 @@ def format_context(hits: list[Any]) -> str:
         payload = getattr(hit, "payload", {}) or {}
         titel = payload.get("titel", "Unbekannt")
         text = payload.get("text", "")
-        parts.append(_SOURCE_TEMPLATE.format(idx=i, titel=titel, text=text))
+        parts.append(_SOURCE_TEMPLATE.format(
+            idx=i,
+            titel=titel,
+            location=_format_location(payload),
+            text=text,
+        ))
     return "\n\n".join(parts)
 
 

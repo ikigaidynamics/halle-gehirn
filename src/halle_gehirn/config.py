@@ -100,7 +100,7 @@ class Settings(BaseSettings):
 
     # ── Halle-Gehirn / Branding ──
     bot_name: str = "Jarvis"
-    primary_color: str = "#000000"  # TODO: BTU-Hausfarbe
+    primary_color: str = "#c41230"  # MDZ-Rot (per .env ueberschreibbar)
     language: str = "de"
 
     @model_validator(mode="after")

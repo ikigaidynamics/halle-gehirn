@@ -425,21 +425,42 @@ def _deduplicate_hits(hits: list[Any]) -> list[Any]:
     return deduped
 
 
+# Maximale Snippet-Laenge in der API-Antwort (ganze Chunks blaehen die
+# Events auf; das UI zeigt ohnehin nur einen Ausschnitt)
+_SNIPPET_MAX_CHARS = 300
+
+
+def _truncate_snippet(text: str, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
+    """Kuerzt ein Snippet an der Wortgrenze mit Ellipse."""
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+    cut = text.rfind(" ", 0, max_chars)
+    if cut < max_chars // 2:
+        cut = max_chars
+    return text[:cut].rstrip() + " …"
+
+
 def _build_sources(hits: list[Any]) -> list[dict[str, Any]]:
-    """Baut Source-Dicts aus RetrievalHits."""
+    """Baut Source-Dicts aus RetrievalHits.
+
+    Feldmenge MUSS mit ``api.schemas.Source`` uebereinstimmen
+    (Vertrags-Test in test_api.py).
+    """
     sources: list[dict[str, Any]] = []
     for i, hit in enumerate(hits, start=1):
         payload = getattr(hit, "payload", {}) or {}
+        raw_text = payload.get("text_raw") or payload.get("text") or ""
         sources.append({
             "id": f"S{i}",
-            "titel": payload.get("titel", "Unbekannt"),
+            "titel": payload.get("titel") or "Unbekannt",
             "url": payload.get("source_url"),
-            "datei": payload.get("datei", ""),
-            "snippet": payload.get("text_raw", "") or payload.get("text", ""),
+            "datei": payload.get("datei") or "",
+            "snippet": _truncate_snippet(raw_text),
             "page": payload.get("page"),
             "score": round(hit.rerank_score, 4),
-            "doc_type": payload.get("doc_type", ""),
-            "breadcrumb": payload.get("breadcrumb", ""),
+            "doc_type": payload.get("doc_type") or "",
+            "breadcrumb": payload.get("breadcrumb") or "",
         })
     return sources
 
