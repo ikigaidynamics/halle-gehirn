@@ -17,6 +17,7 @@ import streamlit as st
 
 from halle_gehirn.config import get_settings
 from halle_gehirn.ui._display_helpers import clean_snippet
+from halle_gehirn.ui._filter_sidebar import render_filter_sidebar
 
 _PUBLIC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "public"
 
@@ -45,21 +46,24 @@ _LABELS: dict[str, str] = {
 
 def main() -> None:
     """Hauptfunktion der Streamlit-App."""
+    settings = get_settings()
+    bot_name = settings.bot_name
+    primary = settings.primary_color
     icon_path = _PUBLIC_DIR / "MD_Icon_bg.jpg"
     st.set_page_config(
-        page_title="Jarvis — KI-Assistent",
+        page_title=f"{bot_name} — KI-Assistent",
         page_icon=str(icon_path) if icon_path.exists() else None,
         layout="centered",
     )
 
-    # ── MDZ-Branding: Custom CSS + Header ──
+    # ── Branding: Custom CSS + Header (Farbe aus PRIMARY_COLOR) ──
     st.markdown(
-        """<style>
-        .stApp [data-testid="stHeader"] { background: transparent; }
-        .stChatInput textarea { border-color: #c41230 !important; }
-        .stChatInput textarea:focus { border-color: #c41230 !important;
-            box-shadow: 0 0 0 1px #c41230 !important; }
-        div[data-testid="stChatMessage"] .stMarkdown a { color: #c41230; }
+        f"""<style>
+        .stApp [data-testid="stHeader"] {{ background: transparent; }}
+        .stChatInput textarea {{ border-color: {primary} !important; }}
+        .stChatInput textarea:focus {{ border-color: {primary} !important;
+            box-shadow: 0 0 0 1px {primary} !important; }}
+        div[data-testid="stChatMessage"] .stMarkdown a {{ color: {primary}; }}
         </style>""",
         unsafe_allow_html=True,
     )
@@ -72,8 +76,8 @@ def main() -> None:
             st.image(str(logo_path), width="stretch")
 
     st.markdown(
-        '<h1 style="text-align: center; margin-bottom: 0;">'
-        "Jarvis</h1>",
+        f'<h1 style="text-align: center; margin-bottom: 0;">'
+        f"{bot_name}</h1>",
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -92,6 +96,9 @@ def main() -> None:
             "Gefördert durch das Bundesministerium für Wirtschaft "
             "und Klimaschutz"
         )
+
+    # Facetten-Filter (Sidebar) — geht als filters an die Chat-API
+    filters = render_filter_sidebar()
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -123,13 +130,13 @@ def main() -> None:
         )
 
     # User-Input
-    if prompt := st.chat_input("Frage an Jarvis..."):
+    if prompt := st.chat_input(f"Frage an {bot_name}..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            answer, confidence, sources = _stream_response(prompt)
+            answer, confidence, sources = _stream_response(prompt, filters)
             if confidence:
                 _render_confidence(confidence)
             if sources:
@@ -145,11 +152,13 @@ def main() -> None:
 
 def _stream_response(
     query: str,
+    filters: dict[str, object] | None = None,
 ) -> tuple[str, str, list[dict[str, str]]]:
     """Streamt die Antwort von /chat/stream.
 
     Args:
         query: Die Benutzeranfrage.
+        filters: Optionale Facetten-Filter (Sidebar).
 
     Returns:
         Tuple (answer, confidence, sources).
@@ -172,6 +181,7 @@ def _stream_response(
             json={
                 "query": query,
                 "session_id": st.session_state.session_id,
+                "filters": filters or None,
             },
             timeout=stream_timeout,
         ) as response:
@@ -262,10 +272,11 @@ def _render_sources(sources: list[dict[str, str]]) -> None:
             if snippet:
                 cleaned = clean_snippet(snippet, strip_headings=True)
                 escaped = html.escape(cleaned)
+                accent = get_settings().primary_color
                 st.markdown(
                     f'<div style="white-space: pre-wrap; font-size: 0.9em;'
                     f" color: #555; background: #f8f9fa; padding: 10px;"
-                    f' border-radius: 6px; border-left: 3px solid #c41230;'
+                    f" border-radius: 6px; border-left: 3px solid {accent};"
                     f' max-height: 400px; overflow-y: auto;">'
                     f"{escaped}</div>",
                     unsafe_allow_html=True,

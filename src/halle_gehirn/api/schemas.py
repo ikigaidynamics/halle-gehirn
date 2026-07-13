@@ -19,14 +19,22 @@ class ChatRequest(BaseModel):
 
 
 class Source(BaseModel):
-    """Eine Quellen-Referenz in der Antwort."""
+    """Eine Quellen-Referenz in der Antwort.
+
+    Feldmenge MUSS mit ``orchestrator._build_sources`` uebereinstimmen —
+    sonst liefern /chat (Pydantic) und /chat/stream (raw dict)
+    unterschiedliche Vertraege (Vertrags-Test in test_api.py).
+    """
 
     id: str
     titel: str
     url: str | None = None
+    datei: str = ""
     snippet: str = ""
     page: int | None = None
     score: float = 0.0
+    doc_type: str = ""
+    breadcrumb: str = ""
 
 
 class ChatResponse(BaseModel):
