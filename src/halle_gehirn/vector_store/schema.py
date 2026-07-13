@@ -123,8 +123,9 @@ class ChunkPayload(BaseModel):
     page: int | None = None
     table_ref: str | None = None
     chunk_index: int
-    char_start: int
-    char_end: int
+    # None bei Tabellen-Chunks (keine echten Body-Offsets)
+    char_start: int | None = None
+    char_end: int | None = None
     ingested_at: str
     source_hash: str
     # — Titel/Navigation —

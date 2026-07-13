@@ -34,6 +34,12 @@ from halle_gehirn.extraction.base import (
     PartialExtractionError,
     TableBlock,
 )
+from halle_gehirn.extraction.boilerplate import clean as clean_boilerplate
+from halle_gehirn.extraction.page_map import (
+    build_page_map,
+    join_pages_with_map,
+    remove_cross_page_repeats,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -168,6 +174,11 @@ class DoclingExtractor:
             Fertiges ExtractedDoc.
         """
         body_md = docling_doc.export_to_markdown()
+        if self._settings.boilerplate_clean:
+            body_md = clean_boilerplate(body_md)
+        # Page-Map NACH dem Cleaning bauen (Offsets muessen zum finalen
+        # Body passen; entfernte Kopf-/Fusszeilen-Elemente matchen nicht)
+        page_map = build_page_map(body_md, _page_elements(docling_doc))
         tables = _extract_tables(docling_doc)
         source_hash = _compute_path_hash(path)
         figures = _extract_figures(
@@ -186,6 +197,7 @@ class DoclingExtractor:
             page_count=page_count,
             language="de",
             meta=_build_meta(path),
+            page_map=page_map,
         )
         logger.info(
             "docling_extraction_done",
@@ -194,6 +206,7 @@ class DoclingExtractor:
             tables=len(tables),
             figures=len(figures),
             md_chars=len(body_md),
+            page_map_entries=len(page_map),
         )
         return extracted
 
@@ -221,9 +234,11 @@ class DoclingExtractor:
         logger.info("pymupdf4llm_fallback_start", path=str(path))
 
         try:
-            body_md: str = pymupdf4llm.to_markdown(
-                str(path), show_progress=False,
+            # page_chunks=True liefert Markdown JE SEITE → exakte Page-Map
+            page_dicts: list[dict[str, Any]] = pymupdf4llm.to_markdown(
+                str(path), show_progress=False, page_chunks=True,
             )
+            pages = [str(p.get("text", "")) for p in page_dicts]
             doc = pymupdf.open(str(path))
             page_count = len(doc)
             doc.close()
@@ -238,6 +253,13 @@ class DoclingExtractor:
                 f"{path.name}: {exc}"
             ) from exc
 
+        if self._settings.boilerplate_clean:
+            # Kopf-/Fusszeilen wiederholen sich je Seite — erst ueber
+            # alle Seiten zaehlen, dann seitenweise bereinigen
+            pages = remove_cross_page_repeats(pages)
+            pages = [clean_boilerplate(p) for p in pages]
+        body_md, page_map = join_pages_with_map(pages)
+
         extracted = ExtractedDoc(
             source=str(path),
             source_type="pdf",
@@ -250,6 +272,7 @@ class DoclingExtractor:
                 **_build_meta(path),
                 "extraction_backend": "pymupdf4llm",
             },
+            page_map=page_map,
         )
 
         logger.info(
@@ -257,6 +280,7 @@ class DoclingExtractor:
             path=str(path),
             pages=page_count,
             md_chars=len(body_md),
+            page_map_entries=len(page_map),
         )
         return extracted
 
@@ -463,6 +487,20 @@ def _get_page_number(element: Any) -> int | None:
     if prov and len(prov) > 0:
         return getattr(prov[0], "page_no", None)
     return None
+
+
+def _page_elements(docling_doc: Any) -> list[tuple[str, int | None]]:
+    """Extrahiert (text, page_no) je Text-Element in Dokumentreihenfolge.
+
+    Grundlage fuer ``build_page_map`` — Tabellen/Bilder tragen ihre
+    Seite bereits selbst (TableBlock/FigureBlock).
+    """
+    elements: list[tuple[str, int | None]] = []
+    for item in getattr(docling_doc, "texts", []):
+        text = getattr(item, "text", "") or ""
+        if text.strip():
+            elements.append((text, _get_page_number(item)))
+    return elements
 
 
 def _count_pages(docling_doc: Any) -> int | None:

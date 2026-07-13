@@ -330,8 +330,10 @@ def build_chunk_payload(
         page=chunk.page,
         table_ref=f"table_{chunk.chunk_index}" if chunk.is_table else None,
         chunk_index=chunk.chunk_index,
-        char_start=chunk.char_start,
-        char_end=chunk.char_end,
+        # Tabellen-Chunks haben keine echten Body-Offsets (der Chunker
+        # setzt lokal 0..len) — None statt irrefuehrender Werte
+        char_start=None if chunk.is_table else chunk.char_start,
+        char_end=None if chunk.is_table else chunk.char_end,
         ingested_at=datetime.now(tz=UTC).isoformat(),
         source_hash=source_hash,
         titel=entry.titel,

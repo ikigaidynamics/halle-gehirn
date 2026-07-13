@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     docling_table_mode: Literal["fast", "accurate"] = "accurate"
     docling_do_figures: bool = True
     figures_dir: str = "data/figures"
+    boilerplate_clean: bool = True  # Kopf-/Fusszeilen + Seitenzahlen entfernen
 
     # ── Generierung ──
     streaming: bool = True
