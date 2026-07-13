@@ -13,7 +13,10 @@ import structlog
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.embeddings.ollama_embedder import OllamaEmbedder
 from halle_gehirn.embeddings.sparse_embedder import FastEmbedSparseEmbedder
-from halle_gehirn.vector_store.qdrant_client import upsert_chunks
+from halle_gehirn.vector_store.qdrant_client import (
+    delete_stale_chunks,
+    upsert_chunks,
+)
 from halle_gehirn.vector_store.schema import ChunkPayload
 
 logger = structlog.get_logger(__name__)
@@ -25,13 +28,19 @@ class IndexResult:
 
     chunks_embedded: int = 0
     chunks_upserted: int = 0
+    chunks_stale_deleted: int = 0
 
 
 async def embed_and_upsert(
     payloads: list[ChunkPayload],
     settings: Settings | None = None,
 ) -> IndexResult:
-    """Erzeugt Embeddings und upserted in Qdrant.
+    """Erzeugt Embeddings, upserted in Qdrant und raeumt Altbestand auf.
+
+    Nach erfolgreichem Upsert werden je Dokument veraltete Punkte
+    entfernt (alte source_hashes derselben Datei sowie ueberzaehlige
+    chunk_index-Werte) — Reihenfolge bewusst NACH dem Upsert, damit es
+    kein Fenster gibt, in dem ein Dokument im Index fehlt.
 
     Args:
         payloads: Liste von ChunkPayloads.
@@ -54,4 +63,26 @@ async def embed_and_upsert(
     total = upsert_chunks(payloads, dense_vecs, sparse_vecs)
     logger.info("upsert_complete", total=total)
 
-    return IndexResult(chunks_embedded=len(texts), chunks_upserted=total)
+    stale = _cleanup_stale(payloads)
+
+    return IndexResult(
+        chunks_embedded=len(texts),
+        chunks_upserted=total,
+        chunks_stale_deleted=stale,
+    )
+
+
+def _cleanup_stale(payloads: list[ChunkPayload]) -> int:
+    """Entfernt veraltete Punkte je Dokument (nach dem Upsert)."""
+    # Erwartete Chunk-Anzahl je (datei, source_hash): max Index + 1
+    expected: dict[tuple[str, str], int] = {}
+    for p in payloads:
+        key = (p.datei, p.source_hash)
+        expected[key] = max(expected.get(key, 0), p.chunk_index + 1)
+
+    stale_total = 0
+    for (datei, source_hash), count in expected.items():
+        stale_total += delete_stale_chunks(datei, source_hash, count)
+    if stale_total:
+        logger.info("stale_cleanup_done", deleted=stale_total)
+    return stale_total

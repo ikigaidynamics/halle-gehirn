@@ -319,6 +319,101 @@ class TestTailMatter:
         assert "Einleitung" in result[0].text
 
 
+class TestPositionalExemptions:
+    """Ausnahmen vom positionalen Front-/Tail-Matter-Drop."""
+
+    def test_tables_survive_tail_matter(self) -> None:
+        """Tabellen-Chunks am Listenende fallen NICHT unter Tail-Matter."""
+        chunks = [
+            _make_chunk(
+                "## 1 Einleitung\n\nText hier. " * 10,
+                index=0,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                "## Literaturverzeichnis\n\n[1] Ref. " * 10,
+                index=1,
+                headings=["Literaturverzeichnis"],
+            ),
+            # Vom Chunker ans Ende gehaengte Ergebnistabelle
+            _make_chunk(
+                "| Messpunkt | Wert |\n|---|---|\n| P1 | 1,2 |",
+                index=2,
+                is_table=True,
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 2
+        assert any(c.is_table for c in result)
+
+    def test_tables_survive_front_matter(self) -> None:
+        """Tabellen-Chunks fallen nicht unter den Front-Matter-Drop."""
+        chunks = [
+            _make_chunk(
+                "| A | B |\n|---|---|\n| 1 | 2 |",
+                index=0,
+                is_table=True,
+            ),
+            _make_chunk(
+                "## 1 Einleitung\n\nInhalt der Einleitung. " * 5,
+                index=1,
+                headings=["1 Einleitung"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 2
+
+    def test_kurzfassung_survives_front_matter(self) -> None:
+        """Kurzfassung vor Kapitel 1 bleibt im Index."""
+        chunks = [
+            _make_chunk("Deckblatt " * 20, index=0),
+            _make_chunk(
+                "## Kurzfassung\n\nDiese Arbeit optimiert die Bahnplanung. "
+                * 5,
+                index=1,
+                headings=["Kurzfassung"],
+            ),
+            _make_chunk(
+                "## Abstract\n\nThis thesis optimises path planning. " * 5,
+                index=2,
+                headings=["Abstract"],
+            ),
+            _make_chunk(
+                "## 1 Einleitung\n\nText der Einleitung. " * 5,
+                index=3,
+                headings=["1 Einleitung"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        texts = "\n".join(c.text for c in result)
+        assert len(result) == 3
+        assert "Kurzfassung" in texts
+        assert "Abstract" in texts
+        assert "Deckblatt" not in texts
+
+    def test_numbered_zusammenfassung_not_whitelisted(self) -> None:
+        """Nummeriertes '7 Zusammenfassung' ist Inhalt, keine Kurzfassung.
+
+        Die Whitelist greift nur fuer unnummerierte Headings; ein
+        nummeriertes Kapitel liegt ohnehin nie vor front_matter_end.
+        """
+        chunks = [
+            _make_chunk("Deckblatt " * 20, index=0),
+            _make_chunk(
+                "## 1 Einleitung\n\nText. " * 10,
+                index=1,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                "## 7 Zusammenfassung\n\nErgebnisse. " * 10,
+                index=2,
+                headings=["7 Zusammenfassung"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 2  # Deckblatt weg, Kapitel bleiben
+
+
 class TestReindexing:
     """Tests fuer die Re-Indizierung nach Filterung."""
 

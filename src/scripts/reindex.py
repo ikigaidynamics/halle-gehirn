@@ -5,7 +5,7 @@ Payloads und upserted in Qdrant. --reset loescht/erstellt NUR die
 konfigurierte Collection (QDRANT_COLLECTION), NIEMALS andere.
 
 Usage:
-    python -m scripts.reindex [--reset] [--dry-run]
+    python -m scripts.reindex [--reset] [--dry-run] [--delta]
 """
 from __future__ import annotations
 
@@ -19,7 +19,10 @@ from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.observability.logging_config import configure_logging
 from halle_gehirn.pipeline.indexer import embed_and_upsert
 from halle_gehirn.pipeline.ingest import IngestError, run_ingest
-from halle_gehirn.vector_store.qdrant_client import reset_collection
+from halle_gehirn.vector_store.qdrant_client import (
+    list_indexed_documents,
+    reset_collection,
+)
 from halle_gehirn.vector_store.schema import ChunkPayload
 
 logger = structlog.get_logger(__name__)
@@ -41,6 +44,14 @@ def main() -> None:
         help="Nur validieren und chunken, keine Embeddings/Upsert",
     )
     parser.add_argument(
+        "--delta",
+        action="store_true",
+        help=(
+            "Nur veraenderte/neue Dokumente verarbeiten "
+            "(source_hash-Vergleich gegen den Index)"
+        ),
+    )
+    parser.add_argument(
         "--manifest",
         type=Path,
         default=None,
@@ -60,11 +71,20 @@ def main() -> None:
     if args.reset:
         _reset_collection(settings)
 
+    skip_hashes: set[str] | None = None
+    if args.delta:
+        indexed = list_indexed_documents()
+        skip_hashes = {
+            d["source_hash"] for d in indexed if d.get("source_hash")
+        }
+        logger.info("delta_mode", indexed_docs=len(skip_hashes))
+
     try:
         payloads, stats = run_ingest(
             manifest_path=args.manifest,
             manual_dir=args.manual_dir,
             settings=settings,
+            skip_hashes=skip_hashes,
         )
     except IngestError as exc:
         logger.error("ingest_aborted", error=str(exc))
@@ -100,6 +120,7 @@ def _print_summary(
         docs_total=getattr(stats, "docs_total", 0),
         docs_success=getattr(stats, "docs_success", 0),
         docs_skipped=getattr(stats, "docs_skipped", 0),
+        docs_unchanged=getattr(stats, "docs_unchanged", 0),
         docs_failed=getattr(stats, "docs_failed", 0),
         chunks_total=getattr(stats, "chunks_total", 0),
         payloads=len(payloads),

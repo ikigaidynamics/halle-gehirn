@@ -13,6 +13,7 @@ import tiktoken
 
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.extraction.base import ExtractedDoc
+from halle_gehirn.extraction.page_map import page_for_offset
 from halle_gehirn.pipeline.chunk_helpers import (
     Section,
     hard_split_text,
@@ -134,6 +135,13 @@ class MarkdownChunker:
         # Harte Token-Grenze durchsetzen (letzter Ausweg)
         chunks = self._enforce_hard_limit(chunks)
 
+        # Seiten-Provenienz: Body-Chunks ueber die Page-Map aufloesen
+        # (Tabellen tragen ihre Seite bereits aus dem TableBlock)
+        if doc.page_map:
+            for c in chunks:
+                if not c.is_table and c.page is None:
+                    c.page = page_for_offset(doc.page_map, c.char_start)
+
         # chunk_index fortlaufend setzen
         for idx, c in enumerate(chunks):
             c.chunk_index = idx
@@ -166,7 +174,7 @@ class MarkdownChunker:
             "chunking_sections",
             section_count=len(sections),
             headings=[
-                s.headings[0] if s.headings else "(kein Heading)"
+                s.headings[-1] if s.headings else "(kein Heading)"
                 for s in sections
             ],
         )
@@ -182,7 +190,8 @@ class MarkdownChunker:
         if not text:
             return []
         tokens = count_tokens(text)
-        heading = section.headings[0] if section.headings else "(kein Heading)"
+        # headings ist die Kette top→leaf; das eigene Heading steht am Ende
+        heading = section.headings[-1] if section.headings else "(kein Heading)"
         if tokens <= self._max:
             logger.debug(
                 "section_single_chunk",
@@ -282,7 +291,7 @@ class MarkdownChunker:
                 result.append(chunk)
                 continue
             heading = (
-                chunk.headings[0] if chunk.headings else "(kein Heading)"
+                chunk.headings[-1] if chunk.headings else "(kein Heading)"
             )
             logger.warning(
                 "chunk_hard_split",

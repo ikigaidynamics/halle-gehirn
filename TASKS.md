@@ -66,6 +66,47 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
 - [ ] `data/eval/golden_qa.yaml` + `eval/{golden_qa,metrics,runner}.py`
 - [ ] `src/scripts/eval_queries.py` → Baseline-Report
 - [ ] Regression-Gate (CI)
+- [x] `eval/chunk_quality.py` (ChunkQualityReport: Token-Verteilung, Fragmente,
+      Heading-/Zeichen-Abdeckung, Tabellen-Integritaet) + `tests/test_chunk_quality.py`
+      (Invarianten + Qualitaetsbaender) + `scripts/eval_chunk_quality.py` (Report)
+- [x] **DEFEKT behoben (WP1):** Tabellen fallen nicht mehr unter den positionalen
+      Tail-/Front-Matter-Drop (`chunk_filter.py`: is_table-Ausnahme); ehem.
+      xfail `test_content_tables_survive_tail_matter` ist jetzt regulaerer Test.
+- [x] **WP1 — BTU-Masterarbeiten sauber chunken** (siehe
+      `docs/audit_2026-07_zwischenstand.md`): Kurzfassung/Abstract ueberleben
+      den Front-Matter-Filter (`_ABSTRACT_HEADINGS`-Whitelist) · Heading-Ketten
+      top→leaf in `split_sections` (mehrstufige Breadcrumbs) · Eval-Korpus um
+      Kurzfassung + Unterkapitel erweitert (70 Chunk-Tests gruen).
+- [x] **WP2 — Ingester sauber (Contextual Retrieval + Delta):**
+      Enricher in `run_ingest` verdrahtet (3 Phasen: Prepare → Enrich →
+      Payloads; graceful bei Ollama-Ausfall; Tabellen werden mit angereichert) ·
+      `build_doc_summary` bevorzugt Kurzfassung/Abstract fuer den Kontext-Prompt ·
+      Manifest-Titel ueberschreibt doc.title auch im Ingest-Pfad ·
+      `delete_stale_chunks` (alte Hashes + ueberzaehlige Indizes, Aufruf NACH
+      Upsert) · `--delta`-Flag in reindex.py (skip via source_hash,
+      `docs_unchanged` in IngestStats) · 14 neue Tests (gemockter Ollama/Qdrant).
+- [x] **WP5 — Streaming-Haertung (Audit-Befund A4):** run() und run_stream()
+      teilen sich `_finalize_answer` (Validation → Grounding → PII-Redaktion) —
+      der Stream-Pfad wendet die Ergebnisse jetzt AN statt sie zu verwerfen.
+      Done-Event traegt `final_answer` (autoritativ, bereinigt/redigiert) +
+      `pii_redacted`/`grounding_score`/`grounded`/Citation-Zaehler; Client
+      (Streamlit) ersetzt den gestreamten Rohtext und parst SSE-Zeilen robust
+      (JSONDecodeError-Schutz). Memory speichert die BEREINIGTE Antwort (beide
+      Pfade). Audit-Log um grounding_score + pii_redacted erweitert.
+      9 neue Tests (test_stream_hardening.py).
+- [x] **WP3 — Seiten-Provenienz & Boilerplate:** Neues Modul
+      `extraction/page_map.py` (build_page_map: monotones Element-Matching;
+      join_pages_with_map: exakte Map fuer seitenweise Backends;
+      remove_cross_page_repeats). Docling-Pfad: Element-Provenienz →
+      Page-Map; pymupdf4llm-Fallback: `page_chunks=True` → exakte Map.
+      Chunker weist Body-Chunks Seiten zu (page_for_offset). Boilerplate-
+      Cleaning (Kopf-/Fusszeilen, Seitenzahlen) jetzt verdrahtet
+      (BOILERPLATE_CLEAN, Default an). Tabellen-Fake-Offsets → None
+      (ChunkPayload.char_start/end optional). Eval um page_coverage
+      erweitert. 15 neue Tests; E2E Test-PDF: page_coverage 100 %.
+- [ ] Zwischenaudit-Arbeitspakete WP4/WP6/WP7: siehe
+      `docs/audit_2026-07_zwischenstand.md` (WP6 API/Frontend →
+      WP4 Titelblatt-Parser → WP7 Ops).
 
 ## Phase 9 — Compliance & Security  (vorgezogen)
 - [ ] `governance/{audit,consent,erasure}.py`

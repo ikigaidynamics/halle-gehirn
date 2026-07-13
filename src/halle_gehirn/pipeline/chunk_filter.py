@@ -4,11 +4,13 @@ Entfernt Boilerplate, Front-Matter, Tail-Matter, Verzeichnisse und zu
 kurze Chunks NACH dem Chunking, VOR Context-Enrichment und Embedding.
 
 Filter-Regeln:
-1. Mindestlaenge (MIN_CHUNK_CHARS)
+1. Mindestlaenge (MIN_CHUNK_CHARS) — Tabellen ausgenommen
 2. Verzeichnis-Erkennung (Heading-Patterns)
 3. Punktreihen-Heuristik (TOC ohne Heading)
 4. Front-Matter-Filter (abschlussarbeit: alles vor erstem Kapitel-Heading)
+   — Ausnahmen: Kurzfassung/Abstract sowie Tabellen-Chunks
 5. Tail-Matter-Filter (abschlussarbeit: alles ab Anhang/Literaturverzeichnis)
+   — Ausnahme: Tabellen-Chunks (positional bedeutungslos, s. _should_drop)
 """
 from __future__ import annotations
 
@@ -75,6 +77,20 @@ _TAIL_HEADINGS: frozenset[str] = frozenset({
     "selbstständigkeitserklärung",
     "eigenstaendigkeitserklaerung",
     "eigenständigkeitserklärung",
+})
+
+# Kurzfassungs-/Abstract-Headings: inhaltstragende Front-Matter-Abschnitte,
+# die den positionalen Front-Matter-Drop UEBERLEBEN (BTU-Abschlussarbeiten:
+# Kurzfassung/Abstract stehen VOR "1 Einleitung", sind aber die dichteste
+# Zusammenfassung der Arbeit). Nur unnummerierte Headings — ein nummeriertes
+# "7 Zusammenfassung" ist regulaerer Inhalt und nie Front-Matter.
+_ABSTRACT_HEADINGS: frozenset[str] = frozenset({
+    "kurzfassung",
+    "kurzzusammenfassung",
+    "kurzreferat",
+    "abstract",
+    "zusammenfassung",
+    "summary",
 })
 
 # Punktreihen: "Kapitelname ......... 12"
@@ -232,6 +248,22 @@ def _matches_tail_heading(chunk: Chunk) -> bool:
     return first_line in _TAIL_HEADINGS
 
 
+def _matches_abstract_heading(chunk: Chunk) -> bool:
+    """Prueft ob ein Chunk ein Kurzfassungs-/Abstract-Heading traegt.
+
+    Bewusst OHNE Abschnittsnummern-Strip: nur unnummerierte Headings
+    zaehlen — "Kurzfassung" ja, "7 Zusammenfassung" (Inhaltskapitel) nein.
+    Prueft die gesamte Heading-Kette (top→leaf) und als Fallback die
+    erste Textzeile.
+    """
+    for heading in chunk.headings:
+        if heading.strip().lower() in _ABSTRACT_HEADINGS:
+            return True
+    first_line = chunk.text.strip().split("\n")[0].strip().lower()
+    first_line = re.sub(r"^#{1,6}\s+", "", first_line)
+    return first_line in _ABSTRACT_HEADINGS
+
+
 def _should_drop(
     chunk: Chunk,
     min_chars: int,
@@ -256,13 +288,27 @@ def _should_drop(
     """
     text = chunk.text.strip()
 
+    # Regel 4/5 sind POSITIONAL — fuer Tabellen-Chunks bedeutungslos:
+    # der Chunker haengt Tabellen ans Listenende (chunker.py), ihr Index
+    # sagt nichts ueber ihre Dokumentposition. Ohne Positional-Ausnahme
+    # wuerden ALLE Tabellen (auch Ergebnistabellen) als Tail-Matter fallen.
+    # Trade-off: eine Tabelle, die tatsaechlich im Anhang steht, bleibt
+    # dadurch im Index — verschmerzbar gegenueber dem Totalverlust.
+    positional_exempt = chunk.is_table
+
     # Regel 4: Front-Matter (muss vor Regel 1, damit auch kurze
-    # Front-Matter-Chunks den richtigen Grund bekommen)
-    if front_matter_end > 0 and chunk_idx < front_matter_end:
+    # Front-Matter-Chunks den richtigen Grund bekommen).
+    # Ausnahme: Kurzfassung/Abstract — inhaltstragend, bleibt im Index.
+    if (
+        front_matter_end > 0
+        and chunk_idx < front_matter_end
+        and not positional_exempt
+        and not _matches_abstract_heading(chunk)
+    ):
         return "front_matter"
 
     # Regel 5: Tail-Matter (Anhang, Literaturverzeichnis, Erklaerungen)
-    if chunk_idx >= tail_matter_start:
+    if chunk_idx >= tail_matter_start and not positional_exempt:
         return "tail_matter"
 
     # Regel 1: Zu kurz (Tabellen ausgenommen)

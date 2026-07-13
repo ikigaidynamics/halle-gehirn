@@ -57,11 +57,16 @@ class Section:
 def split_sections(body: str) -> list[Section]:
     """Teilt Markdown-Body an Headings in Sections auf.
 
+    ``Section.headings`` enthaelt die vollstaendige Heading-Kette von der
+    obersten Ebene bis zum eigenen Heading (top → leaf), abgeleitet aus den
+    ``#``-Leveln — z. B. ``["Masterarbeit", "2 Grundlagen", "2.1 Kinematik"]``.
+    Das eigene Heading einer Section ist immer ``headings[-1]``.
+
     Args:
         body: Markdown-Text.
 
     Returns:
-        Liste von Sections mit Text-Offsets.
+        Liste von Sections mit Text-Offsets und Heading-Ketten.
     """
     if not body.strip():
         return []
@@ -76,8 +81,15 @@ def split_sections(body: str) -> list[Section]:
         if pre.strip():
             sections.append(Section(text=pre, start=0))
 
+    # Heading-Stack: (level, text) — haelt die aktuelle Eltern-Kette
+    heading_stack: list[tuple[int, str]] = []
     for i, match in enumerate(heading_matches):
+        level = len(match.group(1))
         heading_text = normalize_heading(match.group(2))
+        while heading_stack and heading_stack[-1][0] >= level:
+            heading_stack.pop()
+        heading_stack.append((level, heading_text))
+
         start = match.start()
         end = (
             heading_matches[i + 1].start()
@@ -88,7 +100,7 @@ def split_sections(body: str) -> list[Section]:
         sections.append(Section(
             text=section_text,
             start=start,
-            headings=[heading_text],
+            headings=[text for _, text in heading_stack],
         ))
     return sections
 

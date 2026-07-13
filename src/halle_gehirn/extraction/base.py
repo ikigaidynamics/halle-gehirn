@@ -47,6 +47,9 @@ class ExtractedDoc:
     page_count: int | None = None
     language: str = "de"
     meta: dict[str, str] = field(default_factory=dict)
+    # Seiten-Provenienz: (char_offset, page_no) aufsteigend — der Chunker
+    # ordnet darueber jedem Body-Chunk seine Seite zu (leer = unbekannt)
+    page_map: list[tuple[int, int]] = field(default_factory=list)
 
     @property
     def full_text(self) -> str:

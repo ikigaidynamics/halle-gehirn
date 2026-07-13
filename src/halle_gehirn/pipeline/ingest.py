@@ -8,6 +8,7 @@ Qdrant-Upsert erfolgt NICHT hier (Phase 3).
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -24,6 +25,7 @@ from halle_gehirn.extraction.docling_extractor import DoclingExtractor
 from halle_gehirn.extraction.plaintext_extractor import PlaintextExtractor
 from halle_gehirn.pipeline.chunk_filter import filter_chunks
 from halle_gehirn.pipeline.chunker import Chunk, MarkdownChunker
+from halle_gehirn.pipeline.context_enricher import OllamaContextEnricher
 from halle_gehirn.vector_store.schema import (
     Bereich,
     ChunkPayload,
@@ -59,6 +61,7 @@ class IngestStats:
     docs_total: int = 0
     docs_success: int = 0
     docs_skipped: int = 0
+    docs_unchanged: int = 0
     docs_failed: int = 0
     chunks_total: int = 0
     errors: list[str] = field(default_factory=list)
@@ -327,8 +330,10 @@ def build_chunk_payload(
         page=chunk.page,
         table_ref=f"table_{chunk.chunk_index}" if chunk.is_table else None,
         chunk_index=chunk.chunk_index,
-        char_start=chunk.char_start,
-        char_end=chunk.char_end,
+        # Tabellen-Chunks haben keine echten Body-Offsets (der Chunker
+        # setzt lokal 0..len) — None statt irrefuehrender Werte
+        char_start=None if chunk.is_table else chunk.char_start,
+        char_end=None if chunk.is_table else chunk.char_end,
         ingested_at=datetime.now(tz=UTC).isoformat(),
         source_hash=source_hash,
         titel=entry.titel,
@@ -350,14 +355,30 @@ def build_chunk_payload(
     )
 
 
+@dataclass
+class _PreparedDoc:
+    """Zwischenergebnis je Dokument: extrahiert + gechunkt + gefiltert."""
+
+    entry: ManifestEntry
+    source_hash: str
+    path: str
+    doc: ExtractedDoc
+    chunks: list[Chunk]
+
+
 def run_ingest(
     manifest_path: Path | None = None,
     vokabular_path: Path | None = None,
     manual_dir: Path | None = None,
     settings: Settings | None = None,
     selected_dateien: set[str] | None = None,
+    skip_hashes: set[str] | None = None,
 ) -> tuple[list[ChunkPayload], IngestStats]:
     """Fuehrt die Ingest-Pipeline aus (ohne Qdrant-Upsert).
+
+    Drei Phasen: (1) Extract + Chunk + Filter je Dokument, (2) Contextual
+    Retrieval fuer alle Dokumente (eine async-Phase, graceful bei Ollama-
+    Ausfall), (3) Payload-Bau.
 
     Args:
         manifest_path: Pfad zur manifest.yaml.
@@ -366,6 +387,8 @@ def run_ingest(
         settings: Optionale Settings.
         selected_dateien: Optionale Menge von datei-Pfaden. Nur diese
             Dokumente werden verarbeitet. None = alle verarbeiten.
+        skip_hashes: Bereits indexierte source_hashes — Dokumente mit
+            unveraendertem Hash werden uebersprungen (Delta-Ingest).
 
     Returns:
         Tuple aus (Liste aller ChunkPayloads, IngestStats).
@@ -393,14 +416,61 @@ def run_ingest(
 
     chunker = MarkdownChunker(settings=s)
     stats = IngestStats(docs_total=len(entries))
-    all_payloads: list[ChunkPayload] = []
 
+    # Phase 1: Extract + Chunk + Filter
+    prepared = _prepare_all(
+        entries, base, extractors, chunker, s, skip_hashes, stats,
+    )
+
+    # Phase 2: Contextual Retrieval (eine async-Phase fuer alle Dokumente)
+    if s.use_contextual_retrieval and prepared:
+        _run_enrichment(prepared, s)
+
+    # Phase 3: Payloads bauen
+    all_payloads: list[ChunkPayload] = []
+    for prep in prepared:
+        payloads = [
+            build_chunk_payload(chunk, prep.entry, prep.source_hash, prep.path)
+            for chunk in prep.chunks
+        ]
+        all_payloads.extend(payloads)
+        stats.docs_success += 1
+        stats.chunks_total += len(payloads)
+        logger.info(
+            "ingest_doc_processed",
+            datei=prep.entry.datei,
+            chunks=len(payloads),
+            hash=prep.source_hash[:12],
+        )
+
+    logger.info(
+        "ingest_done",
+        total=stats.docs_total,
+        success=stats.docs_success,
+        skipped=stats.docs_skipped,
+        unchanged=stats.docs_unchanged,
+        failed=stats.docs_failed,
+        chunks=stats.chunks_total,
+    )
+    return all_payloads, stats
+
+
+def _prepare_all(
+    entries: list[ManifestEntry],
+    base_dir: Path,
+    extractors: dict[str, Extractor],
+    chunker: MarkdownChunker,
+    settings: Settings,
+    skip_hashes: set[str] | None,
+    stats: IngestStats,
+) -> list[_PreparedDoc]:
+    """Phase 1: Extrahiert, chunked und filtert alle Eintraege."""
+    prepared: list[_PreparedDoc] = []
     for entry in entries:
         try:
-            payloads = _process_entry(entry, base, extractors, chunker, s)
-            all_payloads.extend(payloads)
-            stats.docs_success += 1
-            stats.chunks_total += len(payloads)
+            prep = _prepare_entry(
+                entry, base_dir, extractors, chunker, settings, skip_hashes,
+            )
         except FileNotFoundError as exc:
             stats.docs_skipped += 1
             stats.errors.append(f"{entry.datei}: {exc}")
@@ -409,26 +479,28 @@ def run_ingest(
             stats.docs_failed += 1
             stats.errors.append(f"{entry.datei}: {exc}")
             logger.error("ingest_doc_failed", datei=entry.datei, error=str(exc))
-
-    logger.info(
-        "ingest_done",
-        total=stats.docs_total,
-        success=stats.docs_success,
-        skipped=stats.docs_skipped,
-        failed=stats.docs_failed,
-        chunks=stats.chunks_total,
-    )
-    return all_payloads, stats
+        else:
+            if prep is None:
+                stats.docs_unchanged += 1
+                continue
+            prepared.append(prep)
+    return prepared
 
 
-def _process_entry(
+def _prepare_entry(
     entry: ManifestEntry,
     base_dir: Path,
     extractors: dict[str, Extractor],
     chunker: MarkdownChunker,
     settings: Settings | None = None,
-) -> list[ChunkPayload]:
-    """Verarbeitet einen einzelnen Manifest-Eintrag."""
+    skip_hashes: set[str] | None = None,
+) -> _PreparedDoc | None:
+    """Extrahiert, chunked und filtert einen Manifest-Eintrag.
+
+    Returns:
+        _PreparedDoc — oder None, wenn der source_hash bereits indexiert
+        ist (Delta-Ingest: Dokument unveraendert, Extraktion uebersprungen).
+    """
     path = base_dir / entry.datei
     if not path.exists():
         raise FileNotFoundError(f"Datei nicht gefunden: {path}")
@@ -440,6 +512,15 @@ def _process_entry(
             f"Nicht unterstuetztes Format: {suffix} "
             f"(erlaubt: {supported})"
         )
+    # Hash VOR der (teuren) Extraktion — Delta-Skip spart Docling-Lauf
+    source_hash = compute_source_hash(path)
+    if skip_hashes is not None and source_hash in skip_hashes:
+        logger.info(
+            "ingest_doc_unchanged",
+            datei=entry.datei,
+            hash=source_hash[:12],
+        )
+        return None
     logger.info(
         "ingest_doc_start",
         datei=entry.datei,
@@ -447,7 +528,6 @@ def _process_entry(
         extractor=type(extractor).__name__,
         size_bytes=path.stat().st_size,
     )
-    source_hash = compute_source_hash(path)
     # Per-Dokument-OCR-Override aus Manifest durchreichen
     if (
         entry.do_ocr is not None
@@ -456,6 +536,9 @@ def _process_entry(
         doc: ExtractedDoc = extractor.extract(path, do_ocr=entry.do_ocr)
     else:
         doc = extractor.extract(path)
+    # Kuratierter Manifest-Titel ist die Quelle der Wahrheit (wie im
+    # ManualLoader-Fluss) — wichtig u.a. fuer den Kontext-Prompt.
+    doc.title = entry.titel
     logger.info(
         "ingest_doc_extracted",
         datei=entry.datei,
@@ -466,14 +549,40 @@ def _process_entry(
     )
     chunks: list[Chunk] = chunker.chunk(doc, doc_type=entry.doc_type)
     chunks = filter_chunks(chunks, doc_type=entry.doc_type, settings=settings)
-    payloads = [
-        build_chunk_payload(chunk, entry, source_hash, str(path))
-        for chunk in chunks
-    ]
-    logger.info(
-        "ingest_doc_processed",
-        datei=entry.datei,
-        chunks=len(payloads),
-        hash=source_hash[:12],
+    return _PreparedDoc(
+        entry=entry,
+        source_hash=source_hash,
+        path=str(path),
+        doc=doc,
+        chunks=chunks,
     )
-    return payloads
+
+
+def _run_enrichment(prepared: list[_PreparedDoc], settings: Settings) -> None:
+    """Phase 2: Contextual Retrieval — sync-Wrapper um die async-Phase.
+
+    Graceful Degradation: Jeder Fehler (Ollama down, laufender Event-Loop)
+    degradiert zu context_prefix=None statt den Ingest abzubrechen.
+    """
+    try:
+        asyncio.run(_enrich_prepared(prepared, settings))
+    except RuntimeError as exc:
+        # z.B. bereits laufender Event-Loop im Aufrufer-Kontext
+        logger.warning("context_enrichment_skipped", reason=str(exc))
+
+
+async def _enrich_prepared(
+    prepared: list[_PreparedDoc], settings: Settings,
+) -> None:
+    """Reichert alle vorbereiteten Dokumente per Contextual Retrieval an."""
+    enricher = OllamaContextEnricher(settings=settings)
+    for prep in prepared:
+        try:
+            await enricher.enrich(prep.chunks, prep.doc)
+        except Exception as exc:
+            # Belt-and-braces: enrich() faengt Chunk-Fehler bereits intern
+            logger.warning(
+                "context_enrichment_doc_failed",
+                datei=prep.entry.datei,
+                error=str(exc),
+            )
