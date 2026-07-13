@@ -27,6 +27,7 @@ anlage:
   # Aus dem Meeting genannt, auf der Website nicht verifiziert:
   predictive_maintenance: "Predictive-Maintenance-Prüfstand"
   ur10e:                  "Universal Robots UR10e (Modellfabrik)"
+  datenhandschuhe: "Datenhandschuhe"
 
 # ── projekt · benannte Vorhaben (Startbestand) ──
 projekt:
@@ -37,3 +38,5 @@ projekt:
 ansprechperson:
   berger: "Prof. Dr.-Ing. Ulrich Berger (Lehrstuhlinhaber)"
   bork:   "Christian Bork"
+  jost: "Robin Jost"
+  lautsch: "Martin Lautsch"

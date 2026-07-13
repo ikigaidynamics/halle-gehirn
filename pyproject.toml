@@ -20,6 +20,7 @@ dependencies = [
     "structlog",
     "qdrant-client",
     "docling",
+    "pymupdf4llm",
     "fastembed",
     "ollama",
     "tiktoken",

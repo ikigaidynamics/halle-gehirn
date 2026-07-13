@@ -130,6 +130,10 @@ class ManualLoader:
         einzelnen Dateien werden geloggt, aber uebersprungen (fail-forward).
         Manifest-Metadaten werden in ``ExtractedDoc.meta`` gemergt.
 
+        Per-Dokument-OCR-Steuerung: Enthaelt das Manifest ein Feld
+        ``do_ocr: false`` fuer eine Datei, wird dieses an den Extractor
+        durchgereicht (sofern dieser das unterstuetzt).
+
         Returns:
             Liste erfolgreich extrahierter Dokumente.
         """
@@ -146,7 +150,8 @@ class ManualLoader:
         errors: list[str] = []
 
         for path in files:
-            doc = self._extract_single(path)
+            ocr_override = self._get_ocr_override(path, manifest)
+            doc = self._extract_single(path, do_ocr=ocr_override)
             if doc is None:
                 errors.append(path.name)
                 continue
@@ -167,11 +172,17 @@ class ManualLoader:
     # Interne Helfer
     # ------------------------------------------------------------------
 
-    def _extract_single(self, path: Path) -> ExtractedDoc | None:
+    def _extract_single(
+        self,
+        path: Path,
+        *,
+        do_ocr: bool | None = None,
+    ) -> ExtractedDoc | None:
         """Extrahiert eine einzelne Datei mit dem passenden Extractor.
 
         Args:
             path: Dateipfad.
+            do_ocr: OCR-Override aus dem Manifest (None = Extractor-Default).
 
         Returns:
             ExtractedDoc oder None bei Fehler.
@@ -184,7 +195,16 @@ class ManualLoader:
             return None
 
         try:
-            doc = extractor.extract(path)
+            # do_ocr-Override durchreichen (sofern der Extractor es akzeptiert)
+            if do_ocr is not None and hasattr(extractor.extract, "__code__"):
+                import inspect
+                sig = inspect.signature(extractor.extract)
+                if "do_ocr" in sig.parameters:
+                    doc = extractor.extract(path, do_ocr=do_ocr)
+                else:
+                    doc = extractor.extract(path)
+            else:
+                doc = extractor.extract(path)
             logger.info(
                 "manual_doc_extracted",
                 path=str(path),
@@ -205,6 +225,34 @@ class ManualLoader:
                 error=str(exc),
             )
             return None
+
+    def _get_ocr_override(
+        self,
+        path: Path,
+        manifest: dict[str, dict[str, Any]],
+    ) -> bool | None:
+        """Liest den do_ocr-Override aus dem Manifest fuer eine Datei.
+
+        Args:
+            path: Dateipfad.
+            manifest: Geparstes Manifest.
+
+        Returns:
+            True/False wenn im Manifest gesetzt, sonst None.
+        """
+        try:
+            rel_path = path.relative_to(self._base_dir).as_posix()
+        except ValueError:
+            return None
+
+        entry = manifest.get(rel_path)
+        if entry is None:
+            return None
+
+        do_ocr = entry.get("do_ocr")
+        if isinstance(do_ocr, bool):
+            return do_ocr
+        return None
 
     def _enrich_from_manifest(
         self,

@@ -72,3 +72,22 @@ class Extractor(Protocol):
 
 class ExtractionError(Exception):
     """Fehler bei der Dokument-Extraktion."""
+
+
+class PartialExtractionError(ExtractionError):
+    """Extraktion lieferte nur einen Teil der Seiten (stille Datenverluste).
+
+    Wird ausgeloest, wenn die primaere Pipeline (Docling) zu viele Seiten
+    verliert und ein Fallback-Backend einspringen muss.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        failed_pages: int,
+        total_pages: int,
+    ) -> None:
+        super().__init__(message)
+        self.failed_pages = failed_pages
+        self.total_pages = total_pages

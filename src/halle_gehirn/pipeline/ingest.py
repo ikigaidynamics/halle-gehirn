@@ -19,8 +19,10 @@ import structlog
 import yaml
 
 from halle_gehirn.config import Settings, get_settings
-from halle_gehirn.extraction.base import ExtractedDoc
+from halle_gehirn.extraction.base import ExtractedDoc, ExtractionError, Extractor
 from halle_gehirn.extraction.docling_extractor import DoclingExtractor
+from halle_gehirn.extraction.plaintext_extractor import PlaintextExtractor
+from halle_gehirn.pipeline.chunk_filter import filter_chunks
 from halle_gehirn.pipeline.chunker import Chunk, MarkdownChunker
 from halle_gehirn.vector_store.schema import (
     Bereich,
@@ -80,6 +82,7 @@ class ManifestEntry:
     vertraulichkeit: str = "intern"
     status: str = "final"
     grad: str | None = None
+    do_ocr: bool | None = None
 
 
 def load_manifest(path: Path | None = None) -> list[ManifestEntry]:
@@ -139,6 +142,7 @@ def _parse_manifest_entry(raw: dict[str, Any]) -> ManifestEntry:
         vertraulichkeit=raw.get("vertraulichkeit", "intern"),
         status=raw.get("status", "final"),
         grad=raw.get("grad"),
+        do_ocr=raw.get("do_ocr"),
     )
 
 
@@ -318,6 +322,7 @@ def build_chunk_payload(
         ingested_at=datetime.now(tz=UTC).isoformat(),
         source_hash=source_hash,
         titel=entry.titel,
+        datei=entry.datei,
         breadcrumb=" > ".join(chunk.headings) if chunk.headings else None,
         doc_type=DocType(entry.doc_type),
         bereich=[Bereich(b) for b in entry.bereich],
@@ -339,6 +344,7 @@ def run_ingest(
     vokabular_path: Path | None = None,
     manual_dir: Path | None = None,
     settings: Settings | None = None,
+    selected_dateien: set[str] | None = None,
 ) -> tuple[list[ChunkPayload], IngestStats]:
     """Fuehrt die Ingest-Pipeline aus (ohne Qdrant-Upsert).
 
@@ -347,6 +353,8 @@ def run_ingest(
         vokabular_path: Pfad zur vokabular.yaml.
         manual_dir: Basisverzeichnis fuer Dokumente.
         settings: Optionale Settings.
+        selected_dateien: Optionale Menge von datei-Pfaden. Nur diese
+            Dokumente werden verarbeitet. None = alle verarbeiten.
 
     Returns:
         Tuple aus (Liste aller ChunkPayloads, IngestStats).
@@ -354,19 +362,31 @@ def run_ingest(
     s = settings or get_settings()
     base = manual_dir or _MANUAL_DIR
     entries = load_manifest(manifest_path)
+
+    # Filter auf ausgewaehlte Dokumente
+    if selected_dateien is not None:
+        entries = [e for e in entries if e.datei in selected_dateien]
+
     registry = load_vokabular(vokabular_path)
     validate_manifest_against_vokabular(entries, registry)
     validate_enums(entries)
     logger.info("ingest_validated", docs=len(entries))
 
-    extractor = DoclingExtractor(settings=s)
+    docling = DoclingExtractor(settings=s)
+    plaintext = PlaintextExtractor()
+    extractors: dict[str, Extractor] = {}
+    for ext in docling.supported_extensions:
+        extractors[ext] = docling
+    for ext in plaintext.supported_extensions:
+        extractors[ext] = plaintext
+
     chunker = MarkdownChunker(settings=s)
     stats = IngestStats(docs_total=len(entries))
     all_payloads: list[ChunkPayload] = []
 
     for entry in entries:
         try:
-            payloads = _process_entry(entry, base, extractor, chunker)
+            payloads = _process_entry(entry, base, extractors, chunker, s)
             all_payloads.extend(payloads)
             stats.docs_success += 1
             stats.chunks_total += len(payloads)
@@ -393,16 +413,48 @@ def run_ingest(
 def _process_entry(
     entry: ManifestEntry,
     base_dir: Path,
-    extractor: DoclingExtractor,
+    extractors: dict[str, Extractor],
     chunker: MarkdownChunker,
+    settings: Settings | None = None,
 ) -> list[ChunkPayload]:
     """Verarbeitet einen einzelnen Manifest-Eintrag."""
     path = base_dir / entry.datei
     if not path.exists():
         raise FileNotFoundError(f"Datei nicht gefunden: {path}")
+    suffix = path.suffix.lower()
+    extractor = extractors.get(suffix)
+    if extractor is None:
+        supported = sorted(extractors.keys())
+        raise ExtractionError(
+            f"Nicht unterstuetztes Format: {suffix} "
+            f"(erlaubt: {supported})"
+        )
+    logger.info(
+        "ingest_doc_start",
+        datei=entry.datei,
+        suffix=suffix,
+        extractor=type(extractor).__name__,
+        size_bytes=path.stat().st_size,
+    )
     source_hash = compute_source_hash(path)
-    doc: ExtractedDoc = extractor.extract(path)
-    chunks: list[Chunk] = chunker.chunk(doc)
+    # Per-Dokument-OCR-Override aus Manifest durchreichen
+    if (
+        entry.do_ocr is not None
+        and isinstance(extractor, DoclingExtractor)
+    ):
+        doc: ExtractedDoc = extractor.extract(path, do_ocr=entry.do_ocr)
+    else:
+        doc = extractor.extract(path)
+    logger.info(
+        "ingest_doc_extracted",
+        datei=entry.datei,
+        title=doc.title,
+        body_chars=len(doc.body_md),
+        tables=len(doc.tables),
+        source_type=doc.source_type,
+    )
+    chunks: list[Chunk] = chunker.chunk(doc, doc_type=entry.doc_type)
+    chunks = filter_chunks(chunks, doc_type=entry.doc_type, settings=settings)
     payloads = [
         build_chunk_payload(chunk, entry, source_hash, str(path))
         for chunk in chunks

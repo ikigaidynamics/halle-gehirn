@@ -6,54 +6,53 @@
 # Werte für anlage/projekt/ansprechperson: siehe data/vokabular.yaml (Registry).
 # Leere Facetten (z. B. anlage bei einem Flyer) einfach weglassen.
 #
-# ── STARTMENGE (3 Sorten, decken verschiedene Bereiche + eine Anlage ab) ──
+# ── DOKUMENTBESTAND ──
 
 dokumente:
-  # ① Abschlussarbeit — lehre + forschung, maschinenbezogen
-  - datei: "abschlussarbeiten/2024_mustermann_greifroboter.pdf"
-    titel: "Bahnplanung für den Greifroboter unter Störeinflüssen"
+  - datei: "abschlussarbeiten/Demonstratoren_Modellfabrik_Cottbus_RAG.md"
+    titel: "Demonstratoren Übersicht"
+    doc_type: anlagendoku
+    bereich: [infrastruktur]
+    jahr: 2026
+    herkunft: lehrstuhl_at
+    quelltyp: kuratiert
+    vertraulichkeit: offen
+    status: final
+
+  - datei: "abschlussarbeiten/Abschlussarbeit_Zhili Wang.pdf"
+    titel: "Systementwurf für intelligentes Datenmanagement und Diagnostik industrieller Anlagen mittels IIoT und KI"
     doc_type: abschlussarbeit
     grad: master
-    bereich: [lehre, forschung]
-    thema: [mensch_roboter_kollaboration]
-    anlage: [greifroboter]
-    projekt: [direct]
-    ansprechperson: [bork]
-    jahr: 2024
+    bereich: [infrastruktur, lehre, forschung]
+    ansprechperson: [lautsch]
+    jahr: 2025
     herkunft: lehrstuhl_at
     quelltyp: primaer
     vertraulichkeit: intern
     status: final
 
-  # ② MDZ-Transfer — reiner Transfer, öffentlich
-  - datei: "transfer/mdz_flyer_ki-mittelstand.pdf"
-    titel: "KI im Mittelstand — MDZ-Flyer"
-    doc_type: flyer
-    bereich: [transfer]
-    herkunft: mdz
+  - datei: "abschlussarbeiten/Masterarbeit_Alexander_Ruhs.pdf"
+    titel: "Weiterentwicklung und Test von Datenhandschuhen für die Gestenerkennung in Montageprozessen mittels KI"
+    doc_type: abschlussarbeit
+    grad: master
+    bereich: [forschung, infrastruktur, transfer]
+    ansprechperson: [berger, lautsch]
     jahr: 2025
+    herkunft: lehrstuhl_at
     quelltyp: primaer
     vertraulichkeit: offen
+    status: final
 
-  # ③ Anlagendokumentation — infrastruktur, extern (Hersteller)
-  - datei: "anlagen/handbuch_predictive_maintenance.pdf"
-    titel: "Betriebshandbuch Predictive-Maintenance-Prüfstand"
-    doc_type: handbuch
-    bereich: [infrastruktur]
-    thema: [vernetzte_steuerungstechnik]
+  - datei: "abschlussarbeiten/Masterarbeit Khaled Abdalla.pdf"
+    titel: "Evaluierung verschiedener Beschleunigungssensoren zur Zustandsklassifikation von Werkzeugen im Kontext industrieller Predictive-Maintenance-Lösungen"
+    doc_type: abschlussarbeit
+    grad: master
+    bereich: [forschung, infrastruktur, transfer]
+    thema: [mensch_maschine_interaktion]
     anlage: [predictive_maintenance]
-    herkunft: extern
-    quelltyp: primaer
-    vertraulichkeit: intern
-
-  # ④ UR10e Betriebsanleitung — infrastruktur, extern (Hersteller)
-  - datei: "anlagen/test_anlage_roboter.pdf"
-    titel: "Betriebsanleitung UR10e Roboterarm"
-    doc_type: handbuch
-    bereich: [infrastruktur]
-    thema: [mensch_roboter_kollaboration]
-    anlage: [ur10e]
-    herkunft: extern
+    ansprechperson: [berger, lautsch]
+    jahr: 2025
+    herkunft: lehrstuhl_at
     quelltyp: primaer
     vertraulichkeit: offen
     status: final

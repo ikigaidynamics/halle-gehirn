@@ -3,6 +3,13 @@
 Konvertiert PDF, DOCX, PPTX, XLSX, HTML und Bilder via IBM Docling zu
 strukturiertem Markdown mit Tabellen- und Seiten-Extraktion. OCR,
 Table-Mode und Figure-Erkennung werden ueber config.py gesteuert.
+
+**Integritaetssicherung (fail-closed):**
+Nach jeder Konvertierung wird ``result.status`` / ``result.errors``
+geprueft. Wenn mehr als ``_MAX_PAGE_LOSS_RATIO`` der Seiten fehlschlagen,
+springt ein pymupdf4llm-Fallback ein. Schlaegt auch dieser fehl,
+wird ``ExtractionError`` geworfen -- stille Teilverluste sind
+ausgeschlossen.
 """
 from __future__ import annotations
 
@@ -10,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from docling.datamodel.base_models import InputFormat
+from docling.datamodel.base_models import ConversionStatus, InputFormat
 from docling.datamodel.pipeline_options import (
     OcrAutoOptions,
     PdfPipelineOptions,
@@ -23,6 +30,7 @@ from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.extraction.base import (
     ExtractedDoc,
     ExtractionError,
+    PartialExtractionError,
     TableBlock,
 )
 
@@ -33,6 +41,10 @@ _SUPPORTED: frozenset[str] = frozenset({
     ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp",
 })
 
+# Maximal tolerierter Anteil fehlgeschlagener Seiten (20 %).
+# Ueberschritten -> Fallback.
+_MAX_PAGE_LOSS_RATIO: float = 0.2
+
 
 class DoclingExtractor:
     """Extractor-Implementierung auf Basis von IBM Docling.
@@ -40,6 +52,10 @@ class DoclingExtractor:
     Unterstuetzt PDF, DOCX, PPTX, XLSX, HTML und gaengige Bildformate.
     Konfiguration (OCR, Tabellen-Modus, Abbildungen) wird aus den
     zentralen Settings gelesen.
+
+    Bei PDFs wird nach der Konvertierung geprueft, ob signifikante
+    Seitenverluste vorliegen. Falls ja, wird pymupdf4llm als
+    Fallback verwendet.
     """
 
     def __init__(self, settings: Settings | None = None) -> None:
@@ -51,17 +67,23 @@ class DoclingExtractor:
         """Dateiendungen, die dieser Extractor verarbeitet."""
         return _SUPPORTED
 
-    def extract(self, source: str | Path) -> ExtractedDoc:
+    def extract(
+        self,
+        source: str | Path,
+        *,
+        do_ocr: bool | None = None,
+    ) -> ExtractedDoc:
         """Extrahiert ein Dokument zu einem ExtractedDoc.
 
         Args:
             source: Dateipfad zur Quelldatei.
+            do_ocr: OCR-Override (None = globale Einstellung aus Config).
 
         Returns:
             Strukturiertes ExtractedDoc mit Markdown, Tabellen, Meta.
 
         Raises:
-            ExtractionError: Konvertierung fehlgeschlagen.
+            ExtractionError: Konvertierung fehlgeschlagen (auch Fallback).
             FileNotFoundError: Datei existiert nicht.
         """
         path = Path(source).resolve()
@@ -72,34 +94,67 @@ class DoclingExtractor:
             suffix=path.suffix.lower(),
             size_bytes=path.stat().st_size,
         )
-        docling_doc = self._convert(path)
-        return self._build_result(docling_doc, path)
 
-    def _convert(self, path: Path) -> Any:
-        """Fuehrt die Docling-Konvertierung durch.
+        try:
+            docling_doc = self._convert(path, do_ocr=do_ocr)
+            return self._build_result(docling_doc, path)
+        except PartialExtractionError as exc:
+            if path.suffix.lower() != ".pdf":
+                raise ExtractionError(str(exc)) from exc
+            logger.warning(
+                "docling_fallback_triggered",
+                path=str(path),
+                failed_pages=exc.failed_pages,
+                total_pages=exc.total_pages,
+            )
+            return self._pymupdf_fallback(path)
+        except ExtractionError:
+            # Docling komplett gescheitert -- Fallback versuchen
+            if path.suffix.lower() == ".pdf":
+                logger.warning(
+                    "docling_crash_fallback", path=str(path),
+                )
+                return self._pymupdf_fallback(path)
+            raise
+
+    def _convert(
+        self,
+        path: Path,
+        *,
+        do_ocr: bool | None = None,
+    ) -> Any:
+        """Fuehrt die Docling-Konvertierung durch und prueft Integritaet.
 
         Args:
             path: Aufgeloester Dateipfad.
+            do_ocr: OCR-Override (None = Config-Default).
 
         Returns:
             Docling-Dokument-Objekt.
 
         Raises:
-            ExtractionError: Konvertierung fehlgeschlagen.
+            PartialExtractionError: Zu viele Seiten fehlgeschlagen.
+            ExtractionError: Konvertierung komplett fehlgeschlagen.
         """
         try:
-            converter = self._get_converter()
+            converter = self._get_converter(do_ocr=do_ocr)
             result = converter.convert(str(path))
-            return result.document
         except ExtractionError:
             raise
         except Exception as exc:
             logger.error(
-                "docling_conversion_failed", path=str(path), error=str(exc),
+                "docling_conversion_failed",
+                path=str(path),
+                error=str(exc),
             )
             raise ExtractionError(
                 f"Docling-Konvertierung fehlgeschlagen fuer {path.name}: {exc}"
             ) from exc
+
+        # -- Integritaetspruefung (fail-closed) --
+        _check_conversion_integrity(result, path)
+
+        return result.document
 
     def _build_result(self, docling_doc: Any, path: Path) -> ExtractedDoc:
         """Baut ein ExtractedDoc aus dem Docling-Ergebnis.
@@ -135,14 +190,142 @@ class DoclingExtractor:
         )
         return extracted
 
-    def _get_converter(self) -> DocumentConverter:
-        """Erstellt oder gibt den gecachten DocumentConverter zurueck."""
+    def _pymupdf_fallback(self, path: Path) -> ExtractedDoc:
+        """Fallback-Extraktion via pymupdf4llm fuer PDFs.
+
+        Args:
+            path: Aufgeloester Pfad zur PDF-Datei.
+
+        Returns:
+            ExtractedDoc aus pymupdf4llm-Markdown.
+
+        Raises:
+            ExtractionError: Auch der Fallback ist fehlgeschlagen.
+        """
+        try:
+            import pymupdf
+            import pymupdf4llm
+        except ImportError as exc:
+            raise ExtractionError(
+                f"pymupdf4llm nicht installiert -- Fallback fuer "
+                f"{path.name} nicht moeglich"
+            ) from exc
+
+        logger.info("pymupdf4llm_fallback_start", path=str(path))
+
+        try:
+            body_md: str = pymupdf4llm.to_markdown(
+                str(path), show_progress=False,
+            )
+            doc = pymupdf.open(str(path))
+            page_count = len(doc)
+            doc.close()
+        except Exception as exc:
+            logger.error(
+                "pymupdf4llm_fallback_failed",
+                path=str(path),
+                error=str(exc),
+            )
+            raise ExtractionError(
+                f"Auch pymupdf4llm-Fallback fehlgeschlagen fuer "
+                f"{path.name}: {exc}"
+            ) from exc
+
+        extracted = ExtractedDoc(
+            source=str(path),
+            source_type="pdf",
+            title=path.stem,
+            body_md=body_md,
+            tables=[],  # pymupdf4llm rendert Tabellen inline im Markdown
+            page_count=page_count,
+            language="de",
+            meta={
+                **_build_meta(path),
+                "extraction_backend": "pymupdf4llm",
+            },
+        )
+
+        logger.info(
+            "pymupdf4llm_fallback_done",
+            path=str(path),
+            pages=page_count,
+            md_chars=len(body_md),
+        )
+        return extracted
+
+    def _get_converter(
+        self, *, do_ocr: bool | None = None,
+    ) -> DocumentConverter:
+        """Erstellt oder gibt den gecachten DocumentConverter zurueck.
+
+        Args:
+            do_ocr: OCR-Override. Bei None wird der gecachte Converter
+                    mit Config-Default verwendet. Bei explizitem Wert
+                    wird ein frischer Converter erstellt (nicht gecacht).
+        """
+        if do_ocr is not None and do_ocr != self._settings.docling_ocr:
+            # Per-Dokument-Override: frischer Converter (nicht cachen)
+            return _build_converter(self._settings, do_ocr_override=do_ocr)
         if self._converter is None:
             self._converter = _build_converter(self._settings)
         return self._converter
 
 
 # -- module-level helpers -------------------------------------------------
+
+
+def _check_conversion_integrity(result: Any, path: Path) -> None:
+    """Prueft ob die Docling-Konvertierung vollstaendig war.
+
+    Wirft ``PartialExtractionError`` wenn zu viele Seiten verloren gingen.
+
+    Args:
+        result: Docling ConversionResult.
+        path: Original-Dateipfad (fuer Logging).
+
+    Raises:
+        PartialExtractionError: Seitenverlust ueber Schwelle.
+    """
+    failed_count = len(result.errors)
+    ok_count = len(result.pages)
+    total = failed_count + ok_count
+
+    if failed_count == 0:
+        return
+
+    # Immer loggen wenn Fehler auftreten
+    error_details = [
+        {
+            "page": getattr(e, "page_no", "?"),
+            "category": str(getattr(e, "category", "?")),
+            "msg": getattr(e, "error_message", str(e)),
+        }
+        for e in result.errors[:10]
+    ]
+    logger.warning(
+        "docling_page_errors",
+        path=str(path),
+        status=str(result.status),
+        failed=failed_count,
+        total=total,
+        errors=error_details,
+    )
+
+    if total > 0 and failed_count / total > _MAX_PAGE_LOSS_RATIO:
+        raise PartialExtractionError(
+            f"Docling verlor {failed_count}/{total} Seiten bei "
+            f"{path.name} (Status: {result.status})",
+            failed_pages=failed_count,
+            total_pages=total,
+        )
+
+    # Status FAILURE auch ohne einzelne Seitenfehler abfangen
+    if result.status == ConversionStatus.FAILURE:
+        raise PartialExtractionError(
+            f"Docling meldet FAILURE fuer {path.name}",
+            failed_pages=failed_count,
+            total_pages=total,
+        )
 
 
 def _validate_path(path: Path) -> None:
@@ -165,11 +348,16 @@ def _validate_path(path: Path) -> None:
         )
 
 
-def _build_converter(settings: Settings) -> DocumentConverter:
+def _build_converter(
+    settings: Settings,
+    *,
+    do_ocr_override: bool | None = None,
+) -> DocumentConverter:
     """Erstellt einen Docling DocumentConverter aus den Settings.
 
     Args:
         settings: Typisierte Laufzeit-Konfiguration.
+        do_ocr_override: Ueberschreibt ``settings.docling_ocr`` wenn gesetzt.
 
     Returns:
         Konfigurierter DocumentConverter.
@@ -179,10 +367,11 @@ def _build_converter(settings: Settings) -> DocumentConverter:
         if settings.docling_table_mode == "accurate"
         else TableFormerMode.FAST
     )
+    do_ocr = do_ocr_override if do_ocr_override is not None else settings.docling_ocr
     pipeline_options = PdfPipelineOptions(
         do_table_structure=True,
         table_structure_options=TableStructureOptions(mode=table_mode),
-        do_ocr=settings.docling_ocr,
+        do_ocr=do_ocr,
         ocr_options=OcrAutoOptions(lang=["de", "en"]),
         generate_picture_images=settings.docling_do_figures,
     )
@@ -234,7 +423,6 @@ def _table_to_markdown(table: Any, docling_doc: Any) -> str:
             result: str = export_fn(doc=docling_doc)
             return result
         except TypeError:
-            # Fallback fuer aeltere Docling-Versionen ohne doc-Parameter
             try:
                 result = export_fn()
                 return result
@@ -293,4 +481,3 @@ def _build_meta(path: Path) -> dict[str, str]:
         "file_name": path.name,
         "file_size_bytes": str(stat.st_size),
     }
-

@@ -1,28 +1,54 @@
 """Struktur- und token-bewusster Markdown-Chunker.
 
-Zerlegt ExtractedDoc-Markdown in Chunks mit Zeichen-Offsets. Verwendet
-den deutschen Satz-Splitter fuer saubere Grenzen und tiktoken fuer
-Token-Zaehlung. Tabellen werden als eigene Chunks behandelt.
-
-Orientiert sich am Docling-HybridChunker-Ansatz (Struktur + Token),
-arbeitet aber auf Markdown — so kompatibel mit allen Extractoren.
+Zerlegt ExtractedDoc-Markdown in Chunks mit Zeichen-Offsets.
+Heading-Split → Satz-Split → harter Zeilen/Wort-Split als Fallback.
+Kein Chunk verlässt chunk() ueber CHUNK_MAX_TOKENS.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 
+import structlog
 import tiktoken
 
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.extraction.base import ExtractedDoc
+from halle_gehirn.pipeline.chunk_helpers import (
+    Section,
+    hard_split_text,
+    split_sections,
+    split_table,
+)
 from halle_gehirn.pipeline.sentence_splitter import Sentence, split_sentences
 
-# Heading-Pattern: ## Heading oder ### Heading etc.
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
+logger = structlog.get_logger(__name__)
 
-# Tiktoken-Encoding fuer Token-Zaehlung
 _ENCODING = tiktoken.get_encoding("cl100k_base")
+
+# ── doc_type-Profile ──
+
+@dataclass(frozen=True)
+class ChunkProfile:
+    """Doc-type-spezifisches Chunking-Verhalten."""
+
+    filter_front_matter: bool = False
+    prefer_tables_whole: bool = False
+    simple_path: bool = False
+
+
+PROFILES: dict[str, ChunkProfile] = {
+    "abschlussarbeit": ChunkProfile(filter_front_matter=True),
+    "promotion": ChunkProfile(filter_front_matter=True),
+    "handbuch": ChunkProfile(prefer_tables_whole=True),
+    "anlagendoku": ChunkProfile(prefer_tables_whole=True),
+    "flyer": ChunkProfile(simple_path=True),
+    "online_beitrag": ChunkProfile(simple_path=True),
+}
+
+DEFAULT_PROFILE = ChunkProfile()
+
+
+# ── Chunk-Datentyp ──
 
 
 @dataclass
@@ -40,80 +66,130 @@ class Chunk:
 
 
 def count_tokens(text: str) -> int:
-    """Zaehlt Tokens mit tiktoken (cl100k_base).
-
-    Args:
-        text: Zu zaehlender Text.
-
-    Returns:
-        Anzahl Tokens.
-    """
+    """Zaehlt Tokens mit tiktoken (cl100k_base)."""
     return len(_ENCODING.encode(text, disallowed_special=()))
 
 
 class MarkdownChunker:
-    """Struktur- und token-bewusster Chunker fuer Markdown.
-
-    Zerlegt Markdown-Text in Chunks unter Beruecksichtigung von:
-    - Heading-Hierarchie (##, ###, ...)
-    - Absatzgrenzen
-    - Satzgrenzen (deutscher Splitter)
-    - Token-Limits (tiktoken)
-
-    Tabellen aus ExtractedDoc werden als separate Chunks behandelt.
-    """
+    """Struktur- und token-bewusster Chunker fuer Markdown."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         s = settings or get_settings()
         self._target = s.chunk_target_tokens
         self._max = s.chunk_max_tokens
+        logger.info(
+            "chunker_init",
+            target_tokens=self._target,
+            max_tokens=self._max,
+        )
 
-    def chunk(self, doc: ExtractedDoc) -> list[Chunk]:
-        """Zerlegt ein ExtractedDoc in Chunks.
+    def chunk(
+        self, doc: ExtractedDoc, doc_type: str = "",
+    ) -> list[Chunk]:
+        """Zerlegt ein ExtractedDoc in token-begrenzte Chunks."""
+        profile = PROFILES.get(doc_type, DEFAULT_PROFILE)
+        body_tokens = count_tokens(doc.body_md)
+        logger.info(
+            "chunking_start",
+            source=doc.source,
+            body_chars=len(doc.body_md),
+            body_tokens=body_tokens,
+            tables=len(doc.tables),
+            doc_type=doc_type or "(default)",
+            profile=type(profile).__name__,
+        )
 
-        Args:
-            doc: Extrahiertes Dokument.
-
-        Returns:
-            Liste von Chunk-Objekten mit fortlaufendem chunk_index.
-        """
         chunks: list[Chunk] = []
-        # Body-Chunks
-        body_chunks = self._chunk_body(doc.body_md)
-        chunks.extend(body_chunks)
-        # Tabellen als eigene Chunks
+
+        # Body-Chunks: simple_path fuer kurze Dokumente
+        if profile.simple_path and body_tokens <= self._max:
+            body = doc.body_md.strip()
+            if body:
+                chunks.append(Chunk(
+                    text=body,
+                    char_start=0,
+                    char_end=len(body),
+                    chunk_index=0,
+                ))
+        else:
+            chunks.extend(self._chunk_body(doc.body_md))
+
+        # Tabellen als eigene Chunks (mit Token-Limit)
         for tbl in doc.tables:
             if not tbl.markdown.strip():
                 continue
-            chunks.append(Chunk(
-                text=tbl.markdown.strip(),
-                char_start=0,
-                char_end=len(tbl.markdown.strip()),
-                chunk_index=0,
-                page=tbl.page,
-                is_table=True,
-            ))
+            table_parts = split_table(
+                tbl.markdown.strip(), self._max, tbl.page, count_tokens,
+            )
+            for part in table_parts:
+                chunks.append(Chunk(
+                    text=part["text"],  # type: ignore[arg-type]
+                    char_start=0,
+                    char_end=len(part["text"]),  # type: ignore[arg-type]
+                    chunk_index=0,
+                    page=part["page"],  # type: ignore[arg-type]
+                    is_table=True,
+                ))
+
+        # Harte Token-Grenze durchsetzen (letzter Ausweg)
+        chunks = self._enforce_hard_limit(chunks)
+
         # chunk_index fortlaufend setzen
         for idx, c in enumerate(chunks):
             c.chunk_index = idx
+
+        self._log_summary(doc.source, chunks)
         return chunks
+
+    def _log_summary(self, source: str, chunks: list[Chunk]) -> None:
+        """Loggt Zusammenfassung nach dem Chunking."""
+        table_count = sum(1 for c in chunks if c.is_table)
+        token_counts = [count_tokens(c.text) for c in chunks]
+        logger.info(
+            "chunking_done",
+            source=source,
+            body_chunks=len(chunks) - table_count,
+            table_chunks=table_count,
+            total_chunks=len(chunks),
+            avg_tokens=(
+                round(sum(token_counts) / len(token_counts))
+                if token_counts else 0
+            ),
+            min_tokens=min(token_counts) if token_counts else 0,
+            max_tokens=max(token_counts) if token_counts else 0,
+        )
 
     def _chunk_body(self, body: str) -> list[Chunk]:
         """Zerlegt den Body-Markdown in Chunks."""
-        sections = _split_sections(body)
+        sections = split_sections(body)
+        logger.debug(
+            "chunking_sections",
+            section_count=len(sections),
+            headings=[
+                s.headings[0] if s.headings else "(kein Heading)"
+                for s in sections
+            ],
+        )
         chunks: list[Chunk] = []
         for section in sections:
             section_chunks = self._chunk_section(section)
             chunks.extend(section_chunks)
         return chunks
 
-    def _chunk_section(self, section: _Section) -> list[Chunk]:
+    def _chunk_section(self, section: Section) -> list[Chunk]:
         """Zerlegt eine Section in token-begrenzte Chunks."""
         text = section.text.strip()
         if not text:
             return []
         tokens = count_tokens(text)
+        heading = section.headings[0] if section.headings else "(kein Heading)"
         if tokens <= self._max:
+            logger.debug(
+                "section_single_chunk",
+                heading=heading,
+                tokens=tokens,
+                strategy="single",
+            )
             return [Chunk(
                 text=text,
                 char_start=section.start,
@@ -122,19 +198,23 @@ class MarkdownChunker:
                 headings=section.headings,
             )]
         # Zu gross — per Satz aufteilen
+        logger.debug(
+            "section_sentence_split",
+            heading=heading,
+            tokens=tokens,
+            max_tokens=self._max,
+            strategy="sentence_split",
+        )
         return self._split_by_sentences(section)
 
-    def _split_by_sentences(self, section: _Section) -> list[Chunk]:
+    def _split_by_sentences(self, section: Section) -> list[Chunk]:
         """Teilt eine zu grosse Section an Satzgrenzen auf."""
         sentences = split_sentences(section.text)
         if not sentences:
-            return [Chunk(
-                text=section.text.strip(),
-                char_start=section.start,
-                char_end=section.start + len(section.text.strip()),
-                chunk_index=0,
-                headings=section.headings,
-            )]
+            # Kein Satz erkannt — harter Fallback
+            return self._hard_split_chunks(
+                section.text.strip(), section.headings, section.start,
+            )
         chunks: list[Chunk] = []
         buffer: list[Sentence] = []
         buffer_tokens = 0
@@ -174,46 +254,47 @@ class MarkdownChunker:
             headings=headings,
         )
 
+    # ── Harter Fallback: Zeilen- / Wort-Split ──
 
-# ── Interne Hilfstypen ──
-
-
-@dataclass
-class _Section:
-    """Ein Abschnitt im Markdown (Heading + zugehoeriger Text)."""
-
-    text: str
-    start: int
-    headings: list[str] = field(default_factory=list)
-
-
-def _split_sections(body: str) -> list[_Section]:
-    """Teilt Markdown-Body an Headings in Sections auf."""
-    if not body.strip():
-        return []
-    heading_matches = list(_HEADING_RE.finditer(body))
-    if not heading_matches:
-        return [_Section(text=body, start=0)]
-
-    sections: list[_Section] = []
-    # Text vor erstem Heading
-    if heading_matches[0].start() > 0:
-        pre = body[: heading_matches[0].start()]
-        if pre.strip():
-            sections.append(_Section(text=pre, start=0))
-
-    for i, match in enumerate(heading_matches):
-        heading_text = match.group(2).strip()
-        start = match.start()
-        end = (
-            heading_matches[i + 1].start()
-            if i + 1 < len(heading_matches)
-            else len(body)
+    def _hard_split_chunks(
+        self, text: str, headings: list[str], offset: int,
+    ) -> list[Chunk]:
+        """Teilt Text per hard_split_text() und baut Chunk-Objekte."""
+        spans = hard_split_text(
+            text, self._max, offset, count_tokens,
+            lambda t: _ENCODING.encode(t, disallowed_special=()),
+            _ENCODING.decode,
         )
-        section_text = body[start:end]
-        sections.append(_Section(
-            text=section_text,
-            start=start,
-            headings=[heading_text],
-        ))
-    return sections
+        return [
+            Chunk(
+                text=s.text, char_start=s.start, char_end=s.end,
+                chunk_index=0, headings=headings,
+            )
+            for s in spans
+        ]
+
+    def _enforce_hard_limit(self, chunks: list[Chunk]) -> list[Chunk]:
+        """Garantiert: kein Chunk ueber self._max Token."""
+        result: list[Chunk] = []
+        for chunk in chunks:
+            tokens = count_tokens(chunk.text)
+            if tokens <= self._max:
+                result.append(chunk)
+                continue
+            heading = (
+                chunk.headings[0] if chunk.headings else "(kein Heading)"
+            )
+            logger.warning(
+                "chunk_hard_split",
+                heading=heading,
+                original_tokens=tokens,
+                max_tokens=self._max,
+            )
+            sub_chunks = self._hard_split_chunks(
+                chunk.text, chunk.headings, chunk.char_start,
+            )
+            for sc in sub_chunks:
+                sc.page = chunk.page
+                sc.is_table = chunk.is_table
+            result.extend(sub_chunks)
+        return result

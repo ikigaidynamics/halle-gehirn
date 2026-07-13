@@ -129,6 +129,7 @@ class ChunkPayload(BaseModel):
     source_hash: str
     # — Titel/Navigation —
     titel: str
+    datei: str = ""
     breadcrumb: str | None = None
     # — Semantische Facetten (Kuration, indiziert) —
     doc_type: DocType

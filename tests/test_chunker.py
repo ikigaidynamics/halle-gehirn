@@ -65,7 +65,7 @@ class TestMarkdownChunker:
         chunks = chunker.chunk(doc)
         table_chunks = [c for c in chunks if c.is_table]
         assert len(table_chunks) == 1
-        assert "|" in table_chunks[0].markdown if hasattr(table_chunks[0], "markdown") else "|" in table_chunks[0].text
+        assert "|" in table_chunks[0].text
 
     def test_chunk_index_continuous(self) -> None:
         """chunk_index ist fortlaufend ab 0."""
@@ -110,3 +110,61 @@ class TestMarkdownChunker:
         chunks = chunker.chunk(doc)
         assert len(chunks) >= 1
         assert any("Technische Daten" in h for c in chunks for h in c.headings)
+
+    # ── Neue Tests: Tabellen-Splitting ──
+
+    def test_oversized_table_split(self) -> None:
+        """Tabellen ueber chunk_max_tokens werden an Zeilengrenzen geteilt."""
+        header = "| Spalte A | Spalte B | Spalte C |"
+        sep = "|---|---|---|"
+        rows = [
+            f"| Wert {i} | Beschreibung Nummer {i} fuer den Test | Ergebnis {i * 10} |"
+            for i in range(200)
+        ]
+        table_md = "\n".join([header, sep] + rows)
+        doc = _make_doc(
+            "Ein Absatz.",
+            tables=[TableBlock(markdown=table_md, page=1)],
+        )
+        chunker = MarkdownChunker()
+        chunks = chunker.chunk(doc)
+        table_chunks = [c for c in chunks if c.is_table]
+        # Muss in mehrere Chunks geteilt werden
+        assert len(table_chunks) > 1
+        # Jeder Chunk muss Token-Limit respektieren
+        for tc in table_chunks:
+            tokens = count_tokens(tc.text)
+            assert tokens <= 900, (
+                f"Table-Chunk {tc.chunk_index} hat {tokens} Tokens"
+            )
+        # Jeder Sub-Chunk muss den Header enthalten
+        for tc in table_chunks:
+            assert "Spalte A" in tc.text
+            assert "---|" in tc.text
+
+    def test_small_table_stays_whole(self) -> None:
+        """Tabellen innerhalb des Token-Limits werden nicht geteilt."""
+        table_md = "| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |"
+        doc = _make_doc(
+            "Text.", tables=[TableBlock(markdown=table_md, page=1)],
+        )
+        chunker = MarkdownChunker()
+        chunks = chunker.chunk(doc)
+        table_chunks = [c for c in chunks if c.is_table]
+        assert len(table_chunks) == 1
+
+    # ── Neue Tests: doc_type-Profile ──
+
+    def test_chunk_accepts_doc_type(self) -> None:
+        """chunk() akzeptiert doc_type-Parameter ohne Fehler."""
+        doc = _make_doc("## Test\n\nEin Absatz.")
+        chunker = MarkdownChunker()
+        chunks = chunker.chunk(doc, doc_type="abschlussarbeit")
+        assert len(chunks) >= 1
+
+    def test_simple_path_flyer(self) -> None:
+        """Kurze Flyer-Dokumente ergeben einen Chunk via simple_path."""
+        doc = _make_doc("Ein kurzer Flyer-Text mit wenigen Saetzen.")
+        chunker = MarkdownChunker()
+        chunks = chunker.chunk(doc, doc_type="flyer")
+        assert len(chunks) == 1

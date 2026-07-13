@@ -12,6 +12,7 @@ import structlog
 
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.embeddings.provider import truncate_matryoshka
+from halle_gehirn.pipeline.chunker import count_tokens
 
 logger = structlog.get_logger(__name__)
 
@@ -54,6 +55,19 @@ class OllamaEmbedder:
         """
         if not texts:
             return []
+        # Warnung bei uebergrossen Texten (Embedding-Modell kuerzt still)
+        max_tok = self._settings.chunk_max_tokens
+        for i, text in enumerate(texts):
+            tok = count_tokens(text)
+            if tok > max_tok:
+                logger.warning(
+                    "embedding_text_oversized",
+                    text_index=i,
+                    tokens=tok,
+                    limit=max_tok,
+                    preview=text[:80],
+                    hint="Embedding-Modell schneidet evtl. still ab",
+                )
         all_vectors: list[list[float]] = []
         for batch_start in range(0, len(texts), _BATCH_SIZE):
             batch = texts[batch_start : batch_start + _BATCH_SIZE]

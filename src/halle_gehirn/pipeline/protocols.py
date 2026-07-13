@@ -29,7 +29,7 @@ class Extractor(Protocol):
 class Chunker(Protocol):
     """Zerlegt ein Dokument struktur- und token-bewusst in Chunks."""
 
-    def chunk(self, doc: Any) -> list[Any]:
+    def chunk(self, doc: Any, doc_type: str = "") -> list[Any]:
         """Liefert Chunks mit Zeichen-Offsets und (falls vorhanden) Seitenzahl."""
         ...
 

@@ -295,6 +295,113 @@ def _build_filter(filters: dict[str, Any]) -> Filter:
     return Filter(must=conditions)  # type: ignore[arg-type]
 
 
+# ────────────────────────── Inspektion ──────────────────────────
+
+
+def list_indexed_documents(
+    client: QdrantClient | None = None,
+) -> list[dict[str, Any]]:
+    """Listet alle indexierten Dokumente (gruppiert nach datei).
+
+    Scrollt die gesamte Collection und gruppiert Chunks nach dem
+    ``datei``-Payload-Feld.
+
+    Args:
+        client: Optionaler QdrantClient.
+
+    Returns:
+        Liste von Dicts mit datei, titel, chunk_count, source_hash.
+    """
+    c = client or get_qdrant_client()
+    s = get_settings()
+
+    if not c.collection_exists(s.qdrant_collection):
+        return []
+
+    docs: dict[str, dict[str, Any]] = {}
+    offset = None
+
+    while True:
+        results, next_offset = c.scroll(
+            collection_name=s.qdrant_collection,
+            limit=100,
+            offset=offset,
+            with_payload=["datei", "titel", "source_hash", "doc_type"],
+            with_vectors=False,
+        )
+        for point in results:
+            payload = point.payload or {}
+            datei = payload.get("datei", "")
+            if datei not in docs:
+                docs[datei] = {
+                    "datei": datei,
+                    "titel": payload.get("titel", "Unbekannt"),
+                    "source_hash": payload.get("source_hash", ""),
+                    "doc_type": payload.get("doc_type", ""),
+                    "chunk_count": 0,
+                }
+            docs[datei]["chunk_count"] += 1
+
+        if next_offset is None:
+            break
+        offset = next_offset
+
+    return sorted(docs.values(), key=lambda d: d["datei"])
+
+
+def get_chunks_by_datei(
+    datei: str,
+    client: QdrantClient | None = None,
+) -> list[dict[str, Any]]:
+    """Gibt alle Chunks eines Dokuments zurueck (nach datei gefiltert).
+
+    Args:
+        datei: Der Dateipfad (z.B. 'anlagen/test_anlage_roboter.pdf').
+        client: Optionaler QdrantClient.
+
+    Returns:
+        Liste von Dicts mit point_id und vollstaendigem Payload,
+        sortiert nach chunk_index.
+    """
+    c = client or get_qdrant_client()
+    s = get_settings()
+
+    if not c.collection_exists(s.qdrant_collection):
+        return []
+
+    chunks: list[dict[str, Any]] = []
+    offset = None
+
+    while True:
+        results, next_offset = c.scroll(
+            collection_name=s.qdrant_collection,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="datei",
+                        match=MatchValue(value=datei),
+                    )
+                ]
+            ),
+            limit=100,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        for point in results:
+            chunks.append({
+                "point_id": str(point.id),
+                "payload": point.payload or {},
+            })
+
+        if next_offset is None:
+            break
+        offset = next_offset
+
+    chunks.sort(key=lambda c: c["payload"].get("chunk_index", 0))
+    return chunks
+
+
 # ────────────────────────── Erasure ──────────────────────────
 
 

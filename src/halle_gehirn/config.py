@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     use_contextual_retrieval: bool = True
     chunk_target_tokens: int = 512
     chunk_max_tokens: int = 768
+    min_chunk_chars: int = 100
     context_concurrency: int = 4
 
     # ── Extraction (Docling) ──

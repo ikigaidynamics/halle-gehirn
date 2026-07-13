@@ -259,6 +259,10 @@ class QueryOrchestrator:
 
         full_answer = "".join(parts)
 
+        # Keepalive waehrend Post-Generation (Grounding-LLM-Aufruf
+        # kann >30s dauern — ohne Daten-Fluss droht Client-Timeout)
+        yield {"type": "status", "content": ""}
+
         # Memory aktualisieren
         if memory:
             memory.add_turn("user", query)
@@ -366,8 +370,13 @@ def _build_sources(hits: list[Any]) -> list[dict[str, Any]]:
             "id": f"S{i}",
             "titel": payload.get("titel", "Unbekannt"),
             "url": payload.get("source_url"),
-            "snippet": (payload.get("text", ""))[:200],
+            "datei": payload.get("datei", ""),
+            "snippet": payload.get("text_raw", "") or payload.get("text", ""),
             "page": payload.get("page"),
             "score": round(hit.rerank_score, 4),
+            "doc_type": payload.get("doc_type", ""),
+            "breadcrumb": payload.get("breadcrumb", ""),
         })
     return sources
+
+

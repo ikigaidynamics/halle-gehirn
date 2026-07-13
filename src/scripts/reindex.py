@@ -16,14 +16,10 @@ from pathlib import Path
 import structlog
 
 from halle_gehirn.config import Settings, get_settings
-from halle_gehirn.embeddings.ollama_embedder import OllamaEmbedder
-from halle_gehirn.embeddings.sparse_embedder import FastEmbedSparseEmbedder
 from halle_gehirn.observability.logging_config import configure_logging
+from halle_gehirn.pipeline.indexer import embed_and_upsert
 from halle_gehirn.pipeline.ingest import IngestError, run_ingest
-from halle_gehirn.vector_store.qdrant_client import (
-    reset_collection,
-    upsert_chunks,
-)
+from halle_gehirn.vector_store.qdrant_client import reset_collection
 from halle_gehirn.vector_store.schema import ChunkPayload
 
 logger = structlog.get_logger(__name__)
@@ -77,7 +73,7 @@ def main() -> None:
     _print_summary(stats, payloads, args.dry_run)
 
     if payloads and not args.dry_run:
-        asyncio.run(_embed_and_upsert(payloads, settings))
+        asyncio.run(embed_and_upsert(payloads, settings))
 
 
 def _reset_collection(settings: Settings) -> None:
@@ -91,25 +87,6 @@ def _reset_collection(settings: Settings) -> None:
         "collection_reset_done",
         collection=settings.qdrant_collection,
     )
-
-
-async def _embed_and_upsert(
-    payloads: list[ChunkPayload],
-    settings: Settings,
-) -> None:
-    """Erzeugt Embeddings und upserted in Qdrant."""
-    texts = [p.text for p in payloads]
-
-    dense_embedder = OllamaEmbedder(settings=settings)
-    sparse_embedder = FastEmbedSparseEmbedder(settings=settings)
-
-    logger.info("embedding_start", chunks=len(texts))
-    dense_vecs = await dense_embedder.embed(texts)
-    sparse_vecs = sparse_embedder.embed(texts)
-    logger.info("embedding_done", dense=len(dense_vecs), sparse=len(sparse_vecs))
-
-    total = upsert_chunks(payloads, dense_vecs, sparse_vecs)
-    logger.info("upsert_complete", total=total)
 
 
 def _print_summary(

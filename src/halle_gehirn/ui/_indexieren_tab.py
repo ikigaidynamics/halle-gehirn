@@ -1,0 +1,256 @@
+"""Indexieren-Tab fuer die Streamlit-Ingest-App.
+
+Ermoeglicht das selektive Indexieren von Dokumenten aus dem Manifest:
+Extraktion, Chunking, Embedding und Qdrant-Upsert. Zeigt pro Dokument
+den Indexierungs-Status und erlaubt Einzelauswahl.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import threading
+from io import StringIO
+from pathlib import Path
+
+import streamlit as st
+
+from halle_gehirn.manifest.editor import list_manifest_entries, load_manifest_entries
+from halle_gehirn.pipeline.indexer import IndexResult, embed_and_upsert
+from halle_gehirn.pipeline.ingest import IngestError, IngestStats, run_ingest
+from halle_gehirn.vector_store.qdrant_client import reset_collection
+
+_MANUAL_DIR = Path("data/manual")
+
+
+def render_indexieren_tab() -> None:
+    """Rendert den Indexieren-Tab mit Dokumentauswahl."""
+    st.subheader("Wissensbestand indexieren")
+    st.caption(
+        "Dokumente einzeln auswählen und indexieren: "
+        "Extraktion, Chunking, Embedding und Qdrant-Upsert."
+    )
+
+    # Manifest laden
+    try:
+        rows = list_manifest_entries()
+        entries = load_manifest_entries()
+    except Exception as exc:
+        st.warning(f"Manifest nicht lesbar: {exc}")
+        return
+
+    if not rows:
+        st.info("Keine Dokumente im Manifest.")
+        return
+
+    # Indexierungs-Status aus Qdrant laden
+    indexed_dateien = _get_indexed_dateien()
+
+    # ── Dokumentauswahl ──
+    st.markdown(f"**{len(rows)} Dokumente** im Manifest")
+    st.caption("Bereits indexierte Dokumente sind standardmäßig deaktiviert.")
+
+    # Alle/Keine-Buttons
+    col_all, col_none, col_new, _ = st.columns([1, 1, 1.5, 4.5])
+    with col_all:
+        if st.button("Alle auswählen"):
+            for entry in entries:
+                st.session_state[f"idx_{entry.datei}"] = True
+            st.rerun()
+    with col_none:
+        if st.button("Keine auswählen"):
+            for entry in entries:
+                st.session_state[f"idx_{entry.datei}"] = False
+            st.rerun()
+    with col_new:
+        if st.button("Nur neue auswählen"):
+            for entry in entries:
+                st.session_state[f"idx_{entry.datei}"] = (
+                    entry.datei not in indexed_dateien
+                )
+            st.rerun()
+
+    # Dokument-Checkboxen
+    selected_dateien: set[str] = set()
+    for row, entry in zip(rows, entries):
+        datei = entry.datei
+        is_indexed = datei in indexed_dateien
+        file_exists = (_MANUAL_DIR / datei).exists()
+
+        status_label = "indexiert" if is_indexed else "neu"
+        status_icon = "🟢" if is_indexed else "⚪"
+        file_warn = " — Datei fehlt!" if not file_exists else ""
+
+        # Default: neue Dokumente ausgewaehlt, indexierte nicht
+        default = not is_indexed
+        checked = st.checkbox(
+            f"{status_icon} {row['titel']}  "
+            f"(`{datei}`) [{status_label}]{file_warn}",
+            value=default,
+            key=f"idx_{datei}",
+        )
+        if checked:
+            selected_dateien.add(datei)
+
+    # Auswahl-Statistik
+    n_selected = len(selected_dateien)
+    n_new = sum(1 for d in selected_dateien if d not in indexed_dateien)
+    n_reindex = n_selected - n_new
+    if n_selected:
+        parts = [f"**{n_selected} Dokumente** ausgewählt"]
+        if n_new:
+            parts.append(f"{n_new} neue")
+        if n_reindex:
+            parts.append(f"{n_reindex} erneut indexieren")
+        st.info(" — ".join(parts))
+    else:
+        st.warning("Keine Dokumente ausgewählt.")
+
+    # Reset-Checkbox
+    do_reset = st.checkbox(
+        "Collection zurücksetzen",
+        help="Löscht die bestehende Qdrant-Collection und erstellt sie neu.",
+    )
+    if do_reset:
+        st.warning("Die gesamte Collection wird gelöscht und neu aufgebaut!")
+
+    # Indexieren-Button
+    if st.button(
+        "Indexieren starten",
+        type="primary",
+        disabled=n_selected == 0,
+    ):
+        _run_indexing(do_reset, selected_dateien)
+
+
+def _get_indexed_dateien() -> set[str]:
+    """Holt die Liste der in Qdrant indexierten Dateien."""
+    try:
+        from halle_gehirn.vector_store.qdrant_client import (
+            list_indexed_documents,
+        )
+        return {d["datei"] for d in list_indexed_documents()}
+    except Exception:
+        return set()
+
+
+def _run_indexing(do_reset: bool, selected_dateien: set[str]) -> None:
+    """Fuehrt den Indexierungslauf durch mit Log-Capture."""
+    log_stream = StringIO()
+    handler = logging.StreamHandler(log_stream)
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+
+    try:
+        _run_indexing_inner(do_reset, selected_dateien)
+    finally:
+        root_logger.removeHandler(handler)
+
+    # Logs anzeigen
+    log_text = log_stream.getvalue()
+    if log_text.strip():
+        with st.expander("Detaillierte Logs", expanded=True):
+            st.code(log_text, language="text")
+
+
+def _run_indexing_inner(
+    do_reset: bool, selected_dateien: set[str],
+) -> None:
+    """Kern-Logik des Indexierungslaufs."""
+    # Schritt 1: Reset (optional)
+    if do_reset:
+        with st.spinner("Collection wird zurückgesetzt..."):
+            try:
+                reset_collection()
+                st.success("Collection zurückgesetzt.")
+            except Exception as exc:
+                st.error(f"Collection-Reset fehlgeschlagen: {exc}")
+                _show_connection_hint(exc)
+                return
+
+    # Schritt 2: Ingest (Extract + Chunk) — nur ausgewaehlte Dokumente
+    with st.spinner(
+        f"Extrahiere {len(selected_dateien)} Dokumente..."
+    ):
+        try:
+            payloads, stats = run_ingest(
+                selected_dateien=selected_dateien,
+            )
+        except IngestError as exc:
+            st.error(f"Ingest fehlgeschlagen: {exc}")
+            return
+
+    _show_ingest_stats(stats)
+
+    if not payloads:
+        st.warning("Keine Chunks erzeugt — Indexierung übersprungen.")
+        return
+
+    # Schritt 3: Embed + Upsert
+    with st.spinner(f"Embedding + Upsert für {len(payloads)} Chunks..."):
+        try:
+            result = _run_async_embed(payloads)
+        except Exception as exc:
+            st.error(f"Embedding/Upsert fehlgeschlagen: {exc}")
+            _show_connection_hint(exc)
+            return
+
+    st.success(
+        f"Indexierung abgeschlossen: "
+        f"{result.chunks_upserted} Chunks in Qdrant geschrieben."
+    )
+
+
+def _run_async_embed(payloads: list) -> IndexResult:
+    """Fuehrt embed_and_upsert in einem dedizierten Thread aus.
+
+    Streamlit hat einen eigenen Event-Loop, daher kann asyncio.run()
+    nicht direkt aufgerufen werden.
+    """
+    result_holder: list[IndexResult] = []
+    error_holder: list[Exception] = []
+
+    def _thread_target() -> None:
+        loop = asyncio.new_event_loop()
+        try:
+            r = loop.run_until_complete(embed_and_upsert(payloads))
+            result_holder.append(r)
+        except Exception as exc:
+            error_holder.append(exc)
+        finally:
+            loop.close()
+
+    thread = threading.Thread(target=_thread_target)
+    thread.start()
+    thread.join()
+
+    if error_holder:
+        raise error_holder[0]
+    return result_holder[0]
+
+
+def _show_ingest_stats(stats: IngestStats) -> None:
+    """Zeigt Ingest-Statistiken im UI an."""
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Gesamt", stats.docs_total)
+    c2.metric("Erfolgreich", stats.docs_success)
+    c3.metric("Übersprungen", stats.docs_skipped)
+    c4.metric("Fehlgeschlagen", stats.docs_failed)
+    st.metric("Chunks erzeugt", stats.chunks_total)
+
+    if stats.errors:
+        with st.expander(f"{len(stats.errors)} Fehler/Warnungen"):
+            for err in stats.errors:
+                st.text(err)
+
+
+def _show_connection_hint(exc: Exception) -> None:
+    """Zeigt Hinweise bei Verbindungsfehlern."""
+    msg = str(exc).lower()
+    if "connection" not in msg and "refused" not in msg and "timeout" not in msg:
+        return
+    if "11434" in msg or "ollama" in msg:
+        st.info("Hinweis: Ist Ollama gestartet? (ollama serve)")
+    elif "6335" in msg or "qdrant" in msg:
+        st.info("Hinweis: Ist Qdrant gestartet? (docker-compose up qdrant)")
