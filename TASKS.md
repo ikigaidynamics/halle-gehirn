@@ -66,6 +66,15 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
 - [ ] `data/eval/golden_qa.yaml` + `eval/{golden_qa,metrics,runner}.py`
 - [ ] `src/scripts/eval_queries.py` → Baseline-Report
 - [ ] Regression-Gate (CI)
+- [x] `eval/chunk_quality.py` (ChunkQualityReport: Token-Verteilung, Fragmente,
+      Heading-/Zeichen-Abdeckung, Tabellen-Integritaet) + `tests/test_chunk_quality.py`
+      (Invarianten + Qualitaetsbaender) + `scripts/eval_chunk_quality.py` (Report)
+- [ ] **DEFEKT (offen, via Chunk-Eval gefunden):** Tabellen-Chunks werden ans
+      Listenende gehaengt und fallen positional hinter den Tail-Matter-Cutoff →
+      `filter_chunks` verwirft bei Abschlussarbeiten/Promotionen ALLE Tabellen
+      (auch Ergebnistabellen). Dokumentiert als strict-`xfail`
+      `test_content_tables_survive_tail_matter`. Fix (Filter tabellen-bewusst
+      oder Tabellen an Dokumentposition einsortieren) mit Jost abstimmen.
 
 ## Phase 9 — Compliance & Security  (vorgezogen)
 - [ ] `governance/{audit,consent,erasure}.py`
