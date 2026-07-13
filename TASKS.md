@@ -85,10 +85,18 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
       `delete_stale_chunks` (alte Hashes + ueberzaehlige Indizes, Aufruf NACH
       Upsert) · `--delta`-Flag in reindex.py (skip via source_hash,
       `docs_unchanged` in IngestStats) · 14 neue Tests (gemockter Ollama/Qdrant).
-- [ ] Zwischenaudit-Arbeitspakete WP3–WP7: siehe
-      `docs/audit_2026-07_zwischenstand.md` (WP5 Streaming-Security →
-      WP3 Seiten-Provenienz → WP6 API/Frontend → WP4 Titelblatt-Parser →
-      WP7 Ops).
+- [x] **WP5 — Streaming-Haertung (Audit-Befund A4):** run() und run_stream()
+      teilen sich `_finalize_answer` (Validation → Grounding → PII-Redaktion) —
+      der Stream-Pfad wendet die Ergebnisse jetzt AN statt sie zu verwerfen.
+      Done-Event traegt `final_answer` (autoritativ, bereinigt/redigiert) +
+      `pii_redacted`/`grounding_score`/`grounded`/Citation-Zaehler; Client
+      (Streamlit) ersetzt den gestreamten Rohtext und parst SSE-Zeilen robust
+      (JSONDecodeError-Schutz). Memory speichert die BEREINIGTE Antwort (beide
+      Pfade). Audit-Log um grounding_score + pii_redacted erweitert.
+      9 neue Tests (test_stream_hardening.py).
+- [ ] Zwischenaudit-Arbeitspakete WP3/WP4/WP6/WP7: siehe
+      `docs/audit_2026-07_zwischenstand.md` (WP3 Seiten-Provenienz →
+      WP6 API/Frontend → WP4 Titelblatt-Parser → WP7 Ops).
 
 ## Phase 9 — Compliance & Security  (vorgezogen)
 - [ ] `governance/{audit,consent,erasure}.py`

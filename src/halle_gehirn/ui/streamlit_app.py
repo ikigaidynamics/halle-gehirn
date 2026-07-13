@@ -178,7 +178,12 @@ def _stream_response(
             for line in response.iter_lines():
                 if not line.startswith("data: "):
                     continue
-                data = json.loads(line[6:])
+                try:
+                    data = json.loads(line[6:])
+                except json.JSONDecodeError:
+                    # Unvollstaendige/defekte SSE-Zeile ueberspringen,
+                    # statt den gesamten Stream abzubrechen
+                    continue
 
                 if data["type"] == "token":
                     full_answer += data["content"]
@@ -189,6 +194,11 @@ def _stream_response(
                 elif data["type"] == "done":
                     confidence = data.get("confidence", "")
                     sources = data.get("sources", [])
+                    # Autoritative Antwort (validiert + PII-redigiert)
+                    # ersetzt den gestreamten Rohtext, falls abweichend
+                    final = data.get("final_answer")
+                    if final and final != full_answer:
+                        full_answer = final
 
         placeholder.markdown(full_answer)
     except httpx.ConnectError:
