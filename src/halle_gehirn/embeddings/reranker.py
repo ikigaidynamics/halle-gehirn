@@ -104,6 +104,17 @@ class LogprobsReranker:
                 hit.rerank_score = 0.0
 
         hits.sort(key=lambda h: h.rerank_score, reverse=True)
+
+        all_zero = all(h.rerank_score == 0.0 for h in hits)
+        if all_zero and hits:
+            logger.warning(
+                "rerank_all_scores_zero",
+                total=len(hits),
+                hint="Moeglicherweise unterstuetzt das Modell keine "
+                     "Logprobs oder die Token-Erkennung schlaegt fehl. "
+                     "Log-Level DEBUG fuer Details.",
+            )
+
         logger.info(
             "rerank_done",
             total=len(hits),
@@ -133,19 +144,24 @@ class LogprobsReranker:
             )
 
             # Primaer: Score aus Logprobs extrahieren
-            logprobs_data = response.get("logprobs") or []
+            if isinstance(response, dict):
+                logprobs_data = response.get("logprobs") or []
+            else:
+                logprobs_data = getattr(response, "logprobs", None) or []
             if logprobs_data:
                 score = _extract_yes_prob(logprobs_data)
+                first_tok = getattr(logprobs_data[0], "token", "?")
                 logger.debug(
                     "rerank_logprobs",
                     point_id=getattr(hit, "point_id", "?"),
-                    first_token=logprobs_data[0].get("token", "?"),
+                    first_token=first_tok,
                     score=round(score, 4),
                 )
                 return score
 
             # Fallback: Text-Parsing (Ja=1.0, Nein=0.0)
-            content: str = response["message"]["content"].strip()
+            msg = getattr(response, "message", None)
+            content: str = (msg.content if msg else "").strip()
             content = _strip_think_tags(content)
             fallback = _parse_yes_no(content)
             logger.warning(
@@ -164,15 +180,18 @@ def _extract_text(hit: Any) -> str:
     return str(hit)
 
 
-def _extract_yes_prob(logprobs_data: list[dict[str, Any]]) -> float:
+def _extract_yes_prob(logprobs_data: list[Any]) -> float:
     """Extrahiert P(Ja) aus den Logprobs des ersten Tokens.
 
     Sucht in den top_logprobs des ersten Token-Slots nach einem
     affirmativen Token (Ja/ja/Yes/yes). Gibt exp(logprob) zurueck —
     eine Wahrscheinlichkeit im Bereich [0.0, 1.0].
 
+    Robuste Variante: strippt Whitespace und Interpunktion,
+    prueft case-insensitive als Fallback.
+
     Args:
-        logprobs_data: Liste von Logprob-Dicts aus der Ollama-Response.
+        logprobs_data: Liste von Logprob-Eintraegen (Dicts oder Objekte).
 
     Returns:
         P(Ja) als Float (0.0 falls kein affirmatives Token gefunden).
@@ -180,30 +199,83 @@ def _extract_yes_prob(logprobs_data: list[dict[str, Any]]) -> float:
     if not logprobs_data:
         return 0.0
 
-    first = logprobs_data[0]
+    # Iteriere ueber Logprob-Eintraege (ueberspringe Whitespace-Tokens,
+    # z.B. fuehrendes "\n" oder " " vor "Ja"/"Nein").
+    for entry in logprobs_data:
+        generated = _get(entry, "token", "").strip()
+        if not generated:
+            continue  # Whitespace-Token ueberspringen
 
-    # Zuerst: Ist das generierte Token selbst ein Ja-Token?
-    generated = first.get("token", "").strip()
-    if generated in _YES_TOKENS:
-        return math.exp(first.get("logprob", -10.0))
+        # Ist das generierte Token selbst ein Ja-Token?
+        prob = _match_yes_token(generated, _get(entry, "logprob", -10.0))
+        if prob is not None:
+            return prob
 
-    # Sonst: Suche in top_logprobs nach einem Ja-Token
-    for alt in first.get("top_logprobs", []):
-        token = alt.get("token", "").strip()
-        if token in _YES_TOKENS:
-            return math.exp(alt.get("logprob", -10.0))
+        # Sonst: Suche in top_logprobs nach einem Ja-Token
+        top = _get(entry, "top_logprobs", None) or []
+        for alt in top:
+            token = _get(alt, "token", "").strip()
+            prob = _match_yes_token(token, _get(alt, "logprob", -10.0))
+            if prob is not None:
+                return prob
 
-    # Kein Ja-Token unter den Top-Kandidaten → sehr unwahrscheinlich
+        # Erstes nicht-leeres Token gefunden, aber kein Ja-Match
+        logger.debug(
+            "rerank_no_yes_token",
+            generated_token=repr(generated),
+            top_tokens=[repr(_get(a, "token", "?")) for a in top],
+        )
+        return 0.0
+
     return 0.0
+
+
+def _match_yes_token(token: str, logprob: float) -> float | None:
+    """Prueft ob ein Token ein affirmatives Token ist.
+
+    Erkennt exakte Matches, case-insensitive Matches und
+    Tokens mit angehaengter Interpunktion (z.B. 'Ja.', 'Ja,').
+
+    Args:
+        token: Der Token-String (bereits gestrippt).
+        logprob: Der Log-Wahrscheinlichkeitswert.
+
+    Returns:
+        exp(logprob) bei Match, sonst None.
+    """
+    if not token:
+        return None
+    if token in _YES_TOKENS:
+        return math.exp(logprob)
+    cleaned = token.strip(".,!?;: ").lower()
+    if cleaned in ("ja", "yes"):
+        return math.exp(logprob)
+    return None
+
+
+def _get(obj: Any, key: str, default: Any = None) -> Any:
+    """Liest ein Feld aus einem Dict oder Objekt (ollama-kompatibel)."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
 
 
 def _parse_yes_no(content: str) -> float:
     """Fallback: Parst Ja/Nein aus der Text-Antwort.
 
-    Gibt 1.0 fuer Ja, 0.0 fuer Nein, 0.0 fuer alles andere.
+    Erkennt auch Varianten wie 'Ja, ...' oder 'Ja.' am Anfang.
+    Gibt 1.0 fuer Ja, 0.0 fuer alles andere.
     """
-    cleaned = content.strip().lower().rstrip(".")
+    cleaned = content.strip().lower()
     if cleaned in ("ja", "yes"):
+        return 1.0
+    if cleaned.startswith("ja") and (
+        len(cleaned) == 2 or not cleaned[2].isalpha()
+    ):
+        return 1.0
+    if cleaned.startswith("yes") and (
+        len(cleaned) == 3 or not cleaned[3].isalpha()
+    ):
         return 1.0
     return 0.0
 

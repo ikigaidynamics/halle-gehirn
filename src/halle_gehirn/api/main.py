@@ -6,7 +6,7 @@ Zentraler Einstiegspunkt der API. Konfiguriert:
 - In-Memory Rate-Limiting (Sliding Window per IP)
 - OpenTelemetry-Instrumentation (optional)
 
-Start: ``uvicorn halle_gehirn.api.main:app --host 0.0.0.0 --port 8000``
+Start: ``uvicorn halle_gehirn.api.main:app --host 0.0.0.0 --port 8001``
 """
 from __future__ import annotations
 
@@ -105,13 +105,16 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS
-    origins = [
+    # CORS — konfigurierte Origins + automatisch localhost:8501-8510
+    # damit Streamlit auch auf Alternativ-Ports funktioniert.
+    origins = {
         o.strip() for o in settings.cors_origins.split(",") if o.strip()
-    ]
+    }
+    for port in range(8501, 8511):
+        origins.add(f"http://localhost:{port}")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins,
+        allow_origins=sorted(origins),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

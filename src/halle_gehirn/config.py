@@ -9,6 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
 
     # ── LLM & Embedding (lokal, Ollama) ──
     ollama_url: str = "http://localhost:11434"
+    ollama_urls: str = ""  # Komma-separierte Fallback-URLs (UI-waehlbar)
     llm_model: str = "qwen3:14b"
     embedding_model: str = "qwen3-embedding:0.6b"
     embedding_dim: int = 1024
@@ -49,12 +51,14 @@ class Settings(BaseSettings):
     chunk_target_tokens: int = 512
     chunk_max_tokens: int = 768
     min_chunk_chars: int = 100
+    filter_source_code: bool = True
     context_concurrency: int = 4
 
     # ── Extraction (Docling) ──
     docling_ocr: bool = True
     docling_table_mode: Literal["fast", "accurate"] = "accurate"
     docling_do_figures: bool = True
+    figures_dir: str = "data/figures"
 
     # ── Generierung ──
     streaming: bool = True
@@ -87,6 +91,8 @@ class Settings(BaseSettings):
     crawler_max_pages: int = 2000
 
     # ── API ──
+    api_port: int = 8001
+    api_base_url: str = ""  # leer → wird aus api_port abgeleitet
     admin_api_key: str = "change-me-in-production"
     cors_origins: str = "http://localhost:8501,http://localhost:3000"
     rate_limit_rpm: int = 60
@@ -95,6 +101,13 @@ class Settings(BaseSettings):
     bot_name: str = "Jarvis"
     primary_color: str = "#000000"  # TODO: BTU-Hausfarbe
     language: str = "de"
+
+    @model_validator(mode="after")
+    def _derive_api_base_url(self) -> Settings:
+        """Leitet api_base_url aus api_port ab, wenn nicht explizit gesetzt."""
+        if not self.api_base_url:
+            self.api_base_url = f"http://localhost:{self.api_port}"
+        return self
 
 
 @lru_cache

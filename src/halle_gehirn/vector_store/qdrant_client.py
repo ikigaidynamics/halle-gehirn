@@ -6,6 +6,7 @@ Andere Collections in derselben Instanz werden NIEMALS angefasst.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
@@ -20,6 +21,7 @@ from qdrant_client.models import (
     FusionQuery,
     MatchAny,
     MatchValue,
+    PointIdsList,
     PointStruct,
     Prefetch,
     SparseVector,
@@ -434,6 +436,58 @@ def delete_by_source_hash(
         "erasure_done",
         source_hash=source_hash[:12],
         collection=s.qdrant_collection,
+    )
+
+
+def delete_points_by_ids(
+    point_ids: Sequence[str],
+    client: QdrantClient | None = None,
+) -> None:
+    """Loescht einzelne Punkte anhand ihrer IDs.
+
+    Args:
+        point_ids: Sequenz von Punkt-IDs (hex-Strings).
+        client: Optionaler QdrantClient.
+    """
+    if not point_ids:
+        return
+    c = client or get_qdrant_client()
+    s = get_settings()
+    c.delete(
+        collection_name=s.qdrant_collection,
+        points_selector=PointIdsList(points=list(point_ids)),
+    )
+    logger.info(
+        "points_deleted",
+        count=len(point_ids),
+        ids=[pid[:12] for pid in point_ids[:5]],
+        collection=s.qdrant_collection,
+    )
+
+
+def update_point_payload(
+    point_id: str,
+    payload_updates: dict[str, Any],
+    client: QdrantClient | None = None,
+) -> None:
+    """Aktualisiert Payload-Felder eines einzelnen Punktes.
+
+    Args:
+        point_id: Punkt-ID (hex-String).
+        payload_updates: Dict mit zu aktualisierenden Feldern.
+        client: Optionaler QdrantClient.
+    """
+    c = client or get_qdrant_client()
+    s = get_settings()
+    c.set_payload(
+        collection_name=s.qdrant_collection,
+        payload=payload_updates,
+        points=[point_id],
+    )
+    logger.info(
+        "payload_updated",
+        point_id=point_id[:12],
+        fields=list(payload_updates.keys()),
     )
 
 

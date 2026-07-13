@@ -141,6 +141,7 @@ class ChunkPayload(BaseModel):
     anlage: list[str] = Field(default_factory=list)
     projekt: list[str] = Field(default_factory=list)
     ansprechperson: list[str] = Field(default_factory=list)
+    autor: list[str] = Field(default_factory=list)
     # — Governance (vorgezogen) —
     vertraulichkeit: Vertraulichkeit = Vertraulichkeit.INTERN
     status: Status = Status.FINAL
@@ -158,6 +159,7 @@ KEYWORD_FELDER: tuple[str, ...] = (
     "anlage",
     "projekt",
     "ansprechperson",
+    "autor",
     "vertraulichkeit",
     "status",
     "grad",

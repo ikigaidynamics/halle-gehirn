@@ -42,7 +42,7 @@ _MANUAL_DIR = _DATA_DIR / "manual"
 
 # ────────────────────────── Enum-Labels ──────────────────────────
 
-_ENUM_LABELS: dict[str, str] = {
+ENUM_LABELS: dict[str, str] = {
     # Bereich
     "transfer": "Transfer",
     "forschung": "Forschung",
@@ -85,6 +85,34 @@ _ENUM_LABELS: dict[str, str] = {
 }
 
 
+_ALL_LABELS: dict[str, str] | None = None
+
+
+def resolve_label(slug: str) -> str:
+    """Uebersetzt einen Facetten-Slug in ein menschenlesbares Label.
+
+    Prueft zuerst Enum-Labels (bereich, doc_type, herkunft, ...),
+    dann Registry-Facetten aus vokabular.yaml (anlage, projekt, ...).
+    Fallback: Slug unveraendert.
+
+    Args:
+        slug: Roher Facetten-Wert (z.B. 'lehrstuhl_at', 'ftf_agv').
+
+    Returns:
+        Menschenlesbares Label (z.B. 'Lehrstuhl AT').
+    """
+    global _ALL_LABELS  # noqa: PLW0603
+    if _ALL_LABELS is None:
+        merged = dict(ENUM_LABELS)
+        choices = load_vokabular_choices()
+        for facet_map in choices.values():
+            for s, label in facet_map.items():
+                if s not in merged:
+                    merged[s] = label
+        _ALL_LABELS = merged
+    return _ALL_LABELS.get(slug, slug)
+
+
 # ────────────────────────── Choices ──────────────────────────
 
 
@@ -108,25 +136,25 @@ def load_vokabular_choices(
     choices: dict[str, dict[str, str]] = {}
 
     # Enum-Facetten: slug -> menschenlesbares Label
-    choices["bereich"] = {e.value: _ENUM_LABELS[e.value] for e in Bereich}
-    choices["doc_type"] = {e.value: _ENUM_LABELS[e.value] for e in DocType}
-    choices["herkunft"] = {e.value: _ENUM_LABELS[e.value] for e in Herkunft}
-    choices["quelltyp"] = {e.value: _ENUM_LABELS[e.value] for e in Quelltyp}
+    choices["bereich"] = {e.value: ENUM_LABELS[e.value] for e in Bereich}
+    choices["doc_type"] = {e.value: ENUM_LABELS[e.value] for e in DocType}
+    choices["herkunft"] = {e.value: ENUM_LABELS[e.value] for e in Herkunft}
+    choices["quelltyp"] = {e.value: ENUM_LABELS[e.value] for e in Quelltyp}
     choices["vertraulichkeit"] = {
-        e.value: _ENUM_LABELS[e.value] for e in Vertraulichkeit
+        e.value: ENUM_LABELS[e.value] for e in Vertraulichkeit
     }
-    choices["status"] = {e.value: _ENUM_LABELS[e.value] for e in Status}
-    choices["grad"] = {e.value: _ENUM_LABELS[e.value] for e in Grad}
+    choices["status"] = {e.value: ENUM_LABELS[e.value] for e in Status}
+    choices["grad"] = {e.value: ENUM_LABELS[e.value] for e in Grad}
 
     # Registry-Facetten: slug -> menschenlesbares Label (aus YAML)
     vok_path = vokabular_path or _VOKABULAR_PATH
     if vok_path.exists():
         raw = yaml.safe_load(vok_path.read_text(encoding="utf-8"))
-        for key in ("thema", "anlage", "projekt", "ansprechperson"):
+        for key in ("thema", "anlage", "projekt", "ansprechperson", "autor"):
             section = raw.get(key, {})
             choices[key] = dict(section) if section else {}
     else:
-        for key in ("thema", "anlage", "projekt", "ansprechperson"):
+        for key in ("thema", "anlage", "projekt", "ansprechperson", "autor"):
             choices[key] = {}
 
     return choices
@@ -167,13 +195,13 @@ def list_manifest_entries(
         {
             "datei": e.datei,
             "titel": e.titel,
-            "doc_type": _ENUM_LABELS.get(e.doc_type, e.doc_type),
+            "doc_type": ENUM_LABELS.get(e.doc_type, e.doc_type),
             "bereich": ", ".join(
-                _ENUM_LABELS.get(b, b) for b in e.bereich
+                ENUM_LABELS.get(b, b) for b in e.bereich
             ),
             "thema": ", ".join(e.thema) if e.thema else "",
             "anlage": ", ".join(e.anlage) if e.anlage else "",
-            "vertraulichkeit": _ENUM_LABELS.get(
+            "vertraulichkeit": ENUM_LABELS.get(
                 e.vertraulichkeit, e.vertraulichkeit
             ),
         }
@@ -236,6 +264,8 @@ def _entry_to_yaml_text(entry: ManifestEntry) -> str:
         lines.append(f"    projekt: [{', '.join(entry.projekt)}]")
     if entry.ansprechperson:
         lines.append(f"    ansprechperson: [{', '.join(entry.ansprechperson)}]")
+    if entry.autor:
+        lines.append(f"    autor: [{', '.join(entry.autor)}]")
     if entry.jahr is not None:
         lines.append(f"    jahr: {entry.jahr}")
     lines.extend([
@@ -389,7 +419,7 @@ def validate_entry(
 # ────────────────────────── Vokabular ──────────────────────────
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-_REGISTRY_FACETTEN = ("thema", "anlage", "projekt", "ansprechperson")
+_REGISTRY_FACETTEN = ("thema", "anlage", "projekt", "ansprechperson", "autor")
 
 
 def save_vokabular_entry(

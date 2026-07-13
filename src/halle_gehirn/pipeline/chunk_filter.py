@@ -1,13 +1,14 @@
 """Post-Chunking-Filter fuer nicht-inhaltliche Chunks.
 
-Entfernt Boilerplate, Front-Matter, Verzeichnisse und zu kurze Chunks
-NACH dem Chunking, VOR Context-Enrichment und Embedding.
+Entfernt Boilerplate, Front-Matter, Tail-Matter, Verzeichnisse und zu
+kurze Chunks NACH dem Chunking, VOR Context-Enrichment und Embedding.
 
 Filter-Regeln:
 1. Mindestlaenge (MIN_CHUNK_CHARS)
 2. Verzeichnis-Erkennung (Heading-Patterns)
 3. Punktreihen-Heuristik (TOC ohne Heading)
 4. Front-Matter-Filter (abschlussarbeit: alles vor erstem Kapitel-Heading)
+5. Tail-Matter-Filter (abschlussarbeit: alles ab Anhang/Literaturverzeichnis)
 """
 from __future__ import annotations
 
@@ -36,6 +37,44 @@ _TOC_HEADINGS: frozenset[str] = frozenset({
     "list of tables",
     "references",
     "bibliography",
+    # Erklaerungen / Eidesstattliche Versicherung (Abschlussarbeiten)
+    "erklaerung",
+    "erklärung",
+    "eidesstattliche erklaerung",
+    "eidesstattliche erklärung",
+    "eidesstattliche versicherung",
+    "selbstaendigkeitserklaerung",
+    "selbständigkeitserklärung",
+    "selbstständigkeitserklärung",
+    "eigenstaendigkeitserklaerung",
+    "eigenständigkeitserklärung",
+})
+
+# Tail-Matter-Headings: Ab diesem Heading werden ALLE nachfolgenden
+# Chunks verworfen (inkl. Sub-Abschnitte).
+# Nur fuer doc_type in (abschlussarbeit, promotion).
+_TAIL_HEADINGS: frozenset[str] = frozenset({
+    "anhang",
+    "anhaenge",
+    "anhänge",
+    "appendix",
+    "appendices",
+    "literaturverzeichnis",
+    "quellenverzeichnis",
+    "references",
+    "bibliography",
+    "literatur",
+    "quellen",
+    "erklaerung",
+    "erklärung",
+    "eidesstattliche erklaerung",
+    "eidesstattliche erklärung",
+    "eidesstattliche versicherung",
+    "selbstaendigkeitserklaerung",
+    "selbständigkeitserklärung",
+    "selbstständigkeitserklärung",
+    "eigenstaendigkeitserklaerung",
+    "eigenständigkeitserklärung",
 })
 
 # Punktreihen: "Kapitelname ......... 12"
@@ -51,6 +90,22 @@ _NUMBERED_HEADING_BARE_RE = re.compile(
     r"^\d+(\.\d*)*\.?\s+\w",
 )
 
+# Quellcode-Erkennung: typische Muster fuer Python/Java/C++
+_CODE_LINE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^\s*(import\s+\w|from\s+\w+\s+import)"),
+    re.compile(r"^\s*(def\s+\w+\s*\(|class\s+\w+[\s:(])"),
+    re.compile(r"^\s*self\.\w+"),
+    re.compile(r"^\s*(if\s+__name__\s*==|elif\s+|except\s+\w)"),
+    re.compile(r"^\s*(return\s+\w|yield\s+|raise\s+\w)"),
+    re.compile(
+        r"^\s*(public|private|protected)\s+(static\s+)?"
+        r"(void|int|String|boolean)",
+    ),
+    re.compile(r"^\s*#include\s*<"),
+)
+_CODE_DENSITY_THRESHOLD = 0.4
+_CODE_MIN_LINES = 5
+
 
 def filter_chunks(
     chunks: list[Chunk],
@@ -65,6 +120,8 @@ def filter_chunks(
     3. Punktreihen-Heuristik.
     4. Front-Matter (nur abschlussarbeit) — alles vor erstem
        nummerierten Kapitel-Heading.
+    5. Tail-Matter (nur abschlussarbeit) — alles ab Anhang /
+       Literaturverzeichnis / Erklaerung.
 
     Args:
         chunks: Chunks vom Chunker.
@@ -78,14 +135,20 @@ def filter_chunks(
     min_chars = s.min_chunk_chars
     original_count = len(chunks)
 
-    # Regel 4: Front-Matter-Index bestimmen (vor den Einzelfiltern)
+    # Regel 4/5: Front- und Tail-Matter-Indizes bestimmen
     front_matter_end = _find_front_matter_end(chunks, doc_type)
+    tail_matter_start = _find_tail_matter_start(chunks, doc_type)
 
     reasons: dict[str, int] = {}
     kept: list[Chunk] = []
 
+    filter_code = s.filter_source_code
+
     for i, chunk in enumerate(chunks):
-        reason = _should_drop(chunk, min_chars, i, front_matter_end)
+        reason = _should_drop(
+            chunk, min_chars, i, front_matter_end, tail_matter_start,
+            filter_code=filter_code,
+        )
         if reason:
             reasons[reason] = reasons.get(reason, 0) + 1
         else:
@@ -137,11 +200,46 @@ def _find_front_matter_end(
     return 0
 
 
+def _find_tail_matter_start(
+    chunks: list[Chunk], doc_type: str,
+) -> int:
+    """Findet den Index des ersten Chunks mit Tail-Matter-Heading.
+
+    Nur fuer doc_type in (abschlussarbeit, promotion). Alle Chunks
+    AB diesem Index (inkl.) gelten als Tail-Matter und werden verworfen
+    (Anhang, Literaturverzeichnis, Erklaerungen).
+
+    Returns:
+        Index des ersten Tail-Matter-Chunks, oder len(chunks).
+    """
+    if doc_type not in ("abschlussarbeit", "promotion"):
+        return len(chunks)
+    for i, chunk in enumerate(chunks):
+        if _matches_tail_heading(chunk):
+            return i
+    return len(chunks)
+
+
+def _matches_tail_heading(chunk: Chunk) -> bool:
+    """Prueft ob ein Chunk ein Tail-Matter-Heading hat."""
+    for heading in chunk.headings:
+        normalized = _strip_section_number(heading.strip().lower())
+        if normalized in _TAIL_HEADINGS:
+            return True
+    first_line = chunk.text.strip().split("\n")[0].strip().lower()
+    first_line = re.sub(r"^#{1,6}\s+", "", first_line)
+    first_line = _strip_section_number(first_line)
+    return first_line in _TAIL_HEADINGS
+
+
 def _should_drop(
     chunk: Chunk,
     min_chars: int,
     chunk_idx: int,
     front_matter_end: int,
+    tail_matter_start: int,
+    *,
+    filter_code: bool = True,
 ) -> str | None:
     """Gibt den Verwurf-Grund zurueck oder None (behalten).
 
@@ -150,6 +248,8 @@ def _should_drop(
         min_chars: Mindestlaenge in Zeichen.
         chunk_idx: Position des Chunks in der Originalliste.
         front_matter_end: Index ab dem Inhalt beginnt.
+        tail_matter_start: Index ab dem Tail-Matter beginnt.
+        filter_code: Quellcode-Chunks herausfiltern.
 
     Returns:
         Grund-String oder None.
@@ -160,6 +260,10 @@ def _should_drop(
     # Front-Matter-Chunks den richtigen Grund bekommen)
     if front_matter_end > 0 and chunk_idx < front_matter_end:
         return "front_matter"
+
+    # Regel 5: Tail-Matter (Anhang, Literaturverzeichnis, Erklaerungen)
+    if chunk_idx >= tail_matter_start:
+        return "tail_matter"
 
     # Regel 1: Zu kurz (Tabellen ausgenommen)
     if len(text) < min_chars and not chunk.is_table:
@@ -173,19 +277,52 @@ def _should_drop(
     if _has_dot_leaders(text):
         return "dot_leaders"
 
+    # Regel 6: Quellcode-Heuristik
+    if filter_code and _is_source_code(text):
+        return "source_code"
+
     return None
+
+
+def _strip_section_number(heading: str) -> str:
+    """Entfernt fuehrende Abschnittsnummern wie '7 ', '2.3 ', '1.2.1 '."""
+    return re.sub(r"^\d+(\.\d+)*\.?\s+", "", heading)
 
 
 def _is_toc_chunk(chunk: Chunk) -> bool:
     """Prueft ob der Chunk ein Verzeichnis-Abschnitt ist."""
     # Headings-Feld pruefen
     for heading in chunk.headings:
-        if heading.strip().lower() in _TOC_HEADINGS:
+        normalized = _strip_section_number(heading.strip().lower())
+        if normalized in _TOC_HEADINGS:
             return True
     # Erste Textzeile pruefen (fuer Chunks ohne headings-Feld)
     first_line = chunk.text.strip().split("\n")[0].strip().lower()
     first_line = re.sub(r"^#{1,6}\s+", "", first_line)
+    first_line = _strip_section_number(first_line)
     return first_line in _TOC_HEADINGS
+
+
+def _is_source_code(text: str) -> bool:
+    """Erkennt Chunks die ueberwiegend Quellcode enthalten.
+
+    Prueft ob ein signifikanter Anteil der Zeilen typische
+    Quellcode-Muster matcht (import, def, class, self., etc.).
+
+    Args:
+        text: Chunk-Text.
+
+    Returns:
+        True wenn der Chunk als Quellcode erkannt wird.
+    """
+    lines = [line for line in text.split("\n") if line.strip()]
+    if len(lines) < _CODE_MIN_LINES:
+        return False
+    code_lines = sum(
+        1 for line in lines
+        if any(p.match(line) for p in _CODE_LINE_PATTERNS)
+    )
+    return code_lines / len(lines) >= _CODE_DENSITY_THRESHOLD
 
 
 def _has_dot_leaders(text: str) -> bool:

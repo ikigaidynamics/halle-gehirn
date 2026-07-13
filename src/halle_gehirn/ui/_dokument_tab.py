@@ -6,13 +6,19 @@ Qdrant-Dashboard, aber direkt in der Streamlit-UI.
 """
 from __future__ import annotations
 
+import hashlib
 import html
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
 
-from halle_gehirn.manifest.editor import load_manifest_entries
+from halle_gehirn.manifest.editor import load_manifest_entries, resolve_label
+from halle_gehirn.ui._display_helpers import (
+    clean_snippet,
+    md_lists_to_html,
+    render_meta_table,
+)
 
 _MANUAL_DIR = Path("data/manual")
 
@@ -38,7 +44,33 @@ _META_DISPLAY_FIELDS = [
     "jahr",
     "projekt",
     "ansprechperson",
+    "autor",
 ]
+
+# Menschenlesbare Feldnamen fuer die Chunk-Metadaten-Tabelle
+_FIELD_LABELS: dict[str, str] = {
+    "chunk_index": "Chunk-Nr.",
+    "char_start": "Zeichen ab",
+    "char_end": "Zeichen bis",
+    "page": "Seite",
+    "breadcrumb": "Abschnitt",
+    "context_prefix": "Kontext-Prefix",
+    "source_hash": "Quell-Hash",
+    "datei": "Datei",
+    "titel": "Titel",
+    "doc_type": "Dokumenttyp",
+    "bereich": "Bereich",
+    "thema": "Thema",
+    "anlage": "Anlage",
+    "herkunft": "Herkunft",
+    "quelltyp": "Quelltyp",
+    "vertraulichkeit": "Vertraulichkeit",
+    "status": "Status",
+    "jahr": "Jahr",
+    "projekt": "Projekt",
+    "ansprechperson": "Ansprechperson",
+    "autor": "Autor",
+}
 
 
 def render_dokument_tab() -> None:
@@ -76,17 +108,20 @@ def render_dokument_tab() -> None:
         meta_cols = st.columns(3)
         with meta_cols[0]:
             st.markdown(f"**Titel:** {entry.titel}")
-            st.markdown(f"**Typ:** {entry.doc_type}")
-            st.markdown(f"**Bereich:** {', '.join(entry.bereich)}")
+            st.markdown(f"**Typ:** {resolve_label(entry.doc_type)}")
+            bereich_labels = ", ".join(
+                resolve_label(b) for b in entry.bereich
+            )
+            st.markdown(f"**Bereich:** {bereich_labels}")
         with meta_cols[1]:
-            st.markdown(f"**Herkunft:** {entry.herkunft}")
-            st.markdown(f"**Quelltyp:** {entry.quelltyp}")
-            st.markdown(f"**Vertraulichkeit:** {entry.vertraulichkeit}")
+            st.markdown(f"**Herkunft:** {resolve_label(entry.herkunft)}")
+            st.markdown(f"**Quelltyp:** {resolve_label(entry.quelltyp)}")
+            st.markdown(f"**Vertraulichkeit:** {resolve_label(entry.vertraulichkeit)}")
         with meta_cols[2]:
             st.markdown(f"**Jahr:** {entry.jahr or '—'}")
-            st.markdown(f"**Status:** {entry.status}")
+            st.markdown(f"**Status:** {resolve_label(entry.status)}")
             if entry.grad:
-                st.markdown(f"**Grad:** {entry.grad}")
+                st.markdown(f"**Grad:** {resolve_label(entry.grad)}")
 
     # ── Dokumentinhalt ──
     st.divider()
@@ -117,12 +152,7 @@ def _render_document_content(datei: str) -> None:
         if content:
             st.text(content)
     elif suffix == ".pdf":
-        st.info(
-            "PDF-Vorschau: Nur der extrahierte Text wird angezeigt. "
-            "Starte die Indexierung, um den vollstaendigen Text zu sehen."
-        )
-        # Versuche PlaintextExtractor (nur fuer .md/.txt)
-        # Fuer PDFs zeigen wir einen Hinweis
+        _render_pdf_figures(file_path)
         st.caption(f"Datei: {file_path} ({file_path.stat().st_size:,} Bytes)")
     else:
         st.caption(
@@ -144,13 +174,56 @@ def _read_text_file(path: Path) -> str | None:
         return None
 
 
+def _render_pdf_figures(file_path: Path) -> None:
+    """Zeigt extrahierte Abbildungen aus einer PDF-Datei."""
+    from halle_gehirn.config import get_settings
+
+    fig_paths = _find_figures_for_file(
+        file_path, Path(get_settings().figures_dir),
+    )
+    if fig_paths:
+        st.markdown(f"**{len(fig_paths)} Abbildung(en) extrahiert:**")
+        for fig_path in fig_paths:
+            caption = fig_path.stem.replace("_", " ").title()
+            try:
+                st.image(str(fig_path), caption=caption)
+            except Exception as exc:
+                st.warning(f"Bild konnte nicht geladen werden: {exc}")
+    else:
+        st.info(
+            "Keine extrahierten Abbildungen gefunden. "
+            "Bitte zuerst indexieren, um Abbildungen zu extrahieren."
+        )
+
+
+def _find_figures_for_file(
+    file_path: Path, figures_dir: Path,
+) -> list[Path]:
+    """Sucht extrahierte Abbildungen fuer eine Datei via Source-Hash."""
+    if not figures_dir.exists():
+        return []
+    h = hashlib.sha256()
+    try:
+        with file_path.open("rb") as f:
+            for block in iter(lambda: f.read(8192), b""):
+                h.update(block)
+    except OSError:
+        return []
+    hash_dir = figures_dir / h.hexdigest()[:16]
+    if not hash_dir.exists():
+        return []
+    return sorted(hash_dir.glob("*.png"))
+
+
 def _render_chunks(datei: str) -> None:
     """Zeigt alle Chunks eines Dokuments mit Metadaten."""
     st.subheader("Chunks in Qdrant")
 
     try:
         from halle_gehirn.vector_store.qdrant_client import (
+            delete_points_by_ids,
             get_chunks_by_datei,
+            update_point_payload,
         )
         chunks = get_chunks_by_datei(datei)
     except Exception as exc:
@@ -180,13 +253,15 @@ def _render_chunks(datei: str) -> None:
         with st.expander(label, expanded=False):
             # ── Chunk-Text ──
             st.markdown("**Text:**")
-            escaped = html.escape(text_raw)
+            cleaned = clean_snippet(text_raw)
+            escaped = html.escape(cleaned)
+            formatted = md_lists_to_html(escaped)
             st.markdown(
                 f'<div style="white-space: pre-wrap; font-size: 0.9em;'
                 f" color: #333; background: #f8f9fa; padding: 10px;"
                 f' border-radius: 6px; border-left: 3px solid #0066cc;'
                 f' max-height: 400px; overflow-y: auto;">'
-                f"{escaped}</div>",
+                f"{formatted}</div>",
                 unsafe_allow_html=True,
             )
 
@@ -211,32 +286,72 @@ def _render_chunks(datei: str) -> None:
                 if val is None or val == "" or field in ("context_prefix",):
                     continue
                 if isinstance(val, list):
-                    val = ", ".join(str(v) for v in val)
+                    val = ", ".join(
+                        resolve_label(str(v)) for v in val
+                    )
+                else:
+                    val = resolve_label(str(val))
                 meta_items.append({
-                    "Feld": field,
+                    "Feld": _FIELD_LABELS.get(field, field),
                     "Wert": str(val),
                 })
 
             if meta_items:
-                _render_meta_table(meta_items)
+                render_meta_table(meta_items)
+
+            # ── Aktionen (Loeschen / Bearbeiten) ──
+            _render_chunk_actions(
+                chunk, idx, text_raw,
+                delete_points_by_ids, update_point_payload,
+            )
 
 
-def _render_meta_table(items: list[dict[str, str]]) -> None:
-    """Rendert Metadaten als kompakte HTML-Tabelle."""
-    rows_html = ""
-    for item in items:
-        key = html.escape(item["Feld"])
-        val = html.escape(item["Wert"])
-        rows_html += (
-            f"<tr>"
-            f'<td style="padding: 4px 8px; font-weight: 600; '
-            f'background: #f0f0f0; border: 1px solid #ddd;">{key}</td>'
-            f'<td style="padding: 4px 8px; border: 1px solid #ddd; '
-            f'font-family: monospace; font-size: 0.85em;">{val}</td>'
-            f"</tr>"
+def _render_chunk_actions(
+    chunk: dict[str, Any],
+    idx: Any,
+    text_raw: str,
+    delete_fn: Any,
+    update_fn: Any,
+) -> None:
+    """Rendert Loeschen- und Bearbeiten-Buttons fuer einen Chunk.
+
+    Args:
+        chunk: Chunk-Dict mit point_id und payload.
+        idx: Chunk-Index (fuer Labels).
+        text_raw: Roher Chunk-Text.
+        delete_fn: Funktion zum Loeschen (delete_points_by_ids).
+        update_fn: Funktion zum Aktualisieren (update_point_payload).
+    """
+    pid = chunk["point_id"]
+    st.markdown("---")
+    cols = st.columns([1, 1, 4])
+    with cols[0]:
+        if st.button("Loeschen", key=f"del_{pid}", type="secondary"):
+            delete_fn([pid])
+            st.success(f"Chunk {idx} geloescht.")
+            st.rerun()
+    with cols[1]:
+        edit_key = f"editing_{pid}"
+        if st.button("Bearbeiten", key=f"edit_{pid}", type="secondary"):
+            st.session_state[edit_key] = True
+
+    if st.session_state.get(f"editing_{pid}", False):
+        new_text = st.text_area(
+            "Text bearbeiten",
+            value=text_raw,
+            key=f"textarea_{pid}",
+            height=200,
         )
-    st.markdown(
-        f'<table style="border-collapse: collapse; width: 100%; '
-        f'margin-top: 4px;">{rows_html}</table>',
-        unsafe_allow_html=True,
-    )
+        save_cols = st.columns([1, 5])
+        with save_cols[0]:
+            if st.button("Speichern", key=f"save_{pid}", type="primary"):
+                update_fn(pid, {"text": new_text, "text_raw": new_text})
+                st.session_state[f"editing_{pid}"] = False
+                st.warning(
+                    "Text aktualisiert. Der Embedding-Vektor bleibt "
+                    "unveraendert — fuer volle Aktualisierung bitte "
+                    "neu indexieren."
+                )
+                st.rerun()
+
+

@@ -181,6 +181,144 @@ class TestFrontMatter:
         assert len(result) == 2
 
 
+class TestTailMatter:
+    """Tests fuer den Tail-Matter-Filter (Anhang, Literaturverzeichnis)."""
+
+    def test_anhang_and_following_chunks_dropped(self) -> None:
+        """Chunks ab 'Anhang' werden verworfen (abschlussarbeit)."""
+        chunks = [
+            _make_chunk(
+                "## 1 Einleitung\n\nText hier. " * 10,
+                index=0,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                "## 2 Methode\n\nBeschreibung der Methode. " * 10,
+                index=1,
+                headings=["2 Methode"],
+            ),
+            _make_chunk(
+                "## Anhang\n\nAnhang A: Tabellen. " * 10,
+                index=2,
+                headings=["Anhang"],
+            ),
+            _make_chunk(
+                "## A.1 Zusaetzliche Diagramme\n\nDiagramm 1. " * 10,
+                index=3,
+                headings=["A.1 Zusaetzliche Diagramme"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 2
+        assert "Einleitung" in result[0].text
+        assert "Methode" in result[1].text
+
+    def test_literaturverzeichnis_and_following_dropped(self) -> None:
+        """Chunks ab 'Literaturverzeichnis' werden verworfen."""
+        chunks = [
+            _make_chunk(
+                "## 1 Einleitung\n\nForschungsfrage. " * 10,
+                index=0,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                "## 5 Literaturverzeichnis\n\n[1] Mueller. " * 10,
+                index=1,
+                headings=["5 Literaturverzeichnis"],
+            ),
+            _make_chunk(
+                "[2] Schmidt, 2023. Weitere Referenz. " * 10,
+                index=2,
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 1
+        assert "Einleitung" in result[0].text
+
+    def test_tail_matter_only_for_thesis_types(self) -> None:
+        """Tail-Matter-Filter greift NICHT bei anderen doc_types."""
+        chunks = [
+            _make_chunk("Inhalt " * 20, index=0),
+            _make_chunk(
+                "## Anhang\n\nZusaetzliche Infos. " * 10,
+                index=1,
+                headings=["Anhang"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="handbuch")
+        # Anhang-Heading-Chunk wird per toc_heading (Regel 2) verworfen,
+        # aber kein Tail-Matter-Filter aktiv
+        assert len(result) == 1
+
+    def test_eigenstaendigkeitserklaerung_dropped(self) -> None:
+        """Eigenstaendigkeitserklaerung wird als Tail-Matter erkannt."""
+        chunks = [
+            _make_chunk(
+                "## 1 Fazit\n\nZusammenfassung der Ergebnisse. " * 10,
+                index=0,
+                headings=["1 Fazit"],
+            ),
+            _make_chunk(
+                "## Eigenständigkeitserklärung\n\nHiermit erklaere ich. " * 5,
+                index=1,
+                headings=["Eigenständigkeitserklärung"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 1
+        assert "Fazit" in result[0].text
+
+    def test_front_and_tail_matter_combined(self) -> None:
+        """Front-Matter UND Tail-Matter in derselben Arbeit."""
+        chunks = [
+            _make_chunk("Deckblatt " * 20, index=0),
+            _make_chunk(
+                "## 1 Einleitung\n\nText. " * 10,
+                index=1,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                "## 2 Ergebnis\n\nResultate. " * 10,
+                index=2,
+                headings=["2 Ergebnis"],
+            ),
+            _make_chunk(
+                "## Literaturverzeichnis\n\nRef. " * 10,
+                index=3,
+                headings=["Literaturverzeichnis"],
+            ),
+            _make_chunk(
+                "## Anhang\n\nTabelle. " * 10,
+                index=4,
+                headings=["Anhang"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 2
+        assert "Einleitung" in result[0].text
+        assert "Ergebnis" in result[1].text
+        assert result[0].chunk_index == 0
+        assert result[1].chunk_index == 1
+
+    def test_numbered_tail_heading(self) -> None:
+        """Nummeriertes Tail-Heading wie '7 Quellenverzeichnis'."""
+        chunks = [
+            _make_chunk(
+                "## 1 Einleitung\n\nText. " * 10,
+                index=0,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                "## 7 Quellenverzeichnis\n\n[1] Ref. " * 10,
+                index=1,
+                headings=["7 Quellenverzeichnis"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="promotion")
+        assert len(result) == 1
+        assert "Einleitung" in result[0].text
+
+
 class TestReindexing:
     """Tests fuer die Re-Indizierung nach Filterung."""
 

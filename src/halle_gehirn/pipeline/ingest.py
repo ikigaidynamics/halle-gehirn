@@ -78,6 +78,7 @@ class ManifestEntry:
     anlage: list[str] = field(default_factory=list)
     projekt: list[str] = field(default_factory=list)
     ansprechperson: list[str] = field(default_factory=list)
+    autor: list[str] = field(default_factory=list)
     jahr: int | None = None
     vertraulichkeit: str = "intern"
     status: str = "final"
@@ -126,6 +127,9 @@ def _parse_manifest_entry(raw: dict[str, Any]) -> ManifestEntry:
     ansprechperson = raw.get("ansprechperson", [])
     if isinstance(ansprechperson, str):
         ansprechperson = [ansprechperson]
+    autor = raw.get("autor", [])
+    if isinstance(autor, str):
+        autor = [autor]
 
     return ManifestEntry(
         datei=raw["datei"],
@@ -138,6 +142,7 @@ def _parse_manifest_entry(raw: dict[str, Any]) -> ManifestEntry:
         anlage=anlage,
         projekt=projekt,
         ansprechperson=ansprechperson,
+        autor=autor,
         jahr=raw.get("jahr"),
         vertraulichkeit=raw.get("vertraulichkeit", "intern"),
         status=raw.get("status", "final"),
@@ -163,7 +168,7 @@ def load_vokabular(path: Path | None = None) -> dict[str, set[str]]:
         raise IngestError(f"Vokabular nicht gefunden: {p}")
     raw = yaml.safe_load(p.read_text(encoding="utf-8"))
     registry: dict[str, set[str]] = {}
-    for key in ("thema", "anlage", "projekt", "ansprechperson"):
+    for key in ("thema", "anlage", "projekt", "ansprechperson", "autor"):
         section = raw.get(key, {})
         registry[key] = set(section.keys()) if section else set()
     return registry
@@ -203,6 +208,11 @@ def validate_manifest_against_vokabular(
             if slug not in registry.get("ansprechperson", set()):
                 errors.append(
                     f"{entry.datei}: unbekannter ansprechperson-Slug '{slug}'"
+                )
+        for slug in entry.autor:
+            if slug not in registry.get("autor", set()):
+                errors.append(
+                    f"{entry.datei}: unbekannter autor-Slug '{slug}'"
                 )
     if errors:
         msg = "Vokabular-Validierung fehlgeschlagen:\n" + "\n".join(errors)
@@ -333,6 +343,7 @@ def build_chunk_payload(
         anlage=entry.anlage,
         projekt=entry.projekt,
         ansprechperson=entry.ansprechperson,
+        autor=entry.autor,
         vertraulichkeit=Vertraulichkeit(entry.vertraulichkeit),
         status=Status(entry.status),
         grad=Grad(entry.grad) if entry.grad else None,

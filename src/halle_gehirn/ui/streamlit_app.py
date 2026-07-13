@@ -15,8 +15,19 @@ from pathlib import Path
 import httpx
 import streamlit as st
 
-API_URL = "http://localhost:8001"
+from halle_gehirn.config import get_settings
+from halle_gehirn.ui._display_helpers import clean_snippet
+
 _PUBLIC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "public"
+
+def _check_api_health(api_url: str) -> bool:
+    """Prueft ob die API erreichbar ist (GET /health)."""
+    try:
+        resp = httpx.get(f"{api_url}/health", timeout=3.0)
+        return resp.status_code == 200
+    except httpx.HTTPError:
+        return False
+
 
 _COLORS: dict[str, str] = {
     "gruen": "#28a745",
@@ -56,7 +67,7 @@ def main() -> None:
     # Logo-Header
     logo_path = _PUBLIC_DIR / "MD_zentrum_Spreeland.png"
     if logo_path.exists():
-        col_pad_l, col_logo, col_pad_r = st.columns([1, 2, 1])
+        _col_l, col_logo, _col_r = st.columns([1, 2, 1])
         with col_logo:
             st.image(str(logo_path), width="stretch")
 
@@ -95,6 +106,21 @@ def main() -> None:
                 _render_confidence(msg["confidence"])
             if msg.get("sources"):
                 _render_sources(msg["sources"])
+
+    # API-Status pruefen
+    api_url = get_settings().api_base_url
+    api_ok = _check_api_health(api_url)
+
+    if not api_ok:
+        st.warning(
+            f"API nicht erreichbar unter **{api_url}**.\n\n"
+            "Bitte sicherstellen, dass:\n"
+            "1. Docker läuft (Qdrant + Ollama)\n"
+            "2. Die FastAPI-App gestartet ist: "
+            "`uvicorn halle_gehirn.api.main:app "
+            f"--host 0.0.0.0 --port {get_settings().api_port}`\n\n"
+            "Konfiguration: `API_PORT` / `API_BASE_URL` in `.env`"
+        )
 
     # User-Input
     if prompt := st.chat_input("Frage an Jarvis..."):
@@ -142,7 +168,7 @@ def _stream_response(
         )
         with httpx.stream(
             "POST",
-            f"{API_URL}/chat/stream",
+            f"{get_settings().api_base_url}/chat/stream",
             json={
                 "query": query,
                 "session_id": st.session_state.session_id,
@@ -165,8 +191,16 @@ def _stream_response(
                     sources = data.get("sources", [])
 
         placeholder.markdown(full_answer)
+    except httpx.ConnectError:
+        api_url = get_settings().api_base_url
+        placeholder.error(
+            f"Keine Verbindung zur API ({api_url}/chat/stream). "
+            "Läuft die FastAPI-App? → "
+            f"`uvicorn halle_gehirn.api.main:app "
+            f"--port {get_settings().api_port}`"
+        )
     except httpx.HTTPError as exc:
-        placeholder.error(f"Verbindungsfehler: {exc}")
+        placeholder.error(f"API-Fehler: {exc}")
 
     return full_answer, confidence, sources
 
@@ -214,9 +248,10 @@ def _render_sources(sources: list[dict[str, str]]) -> None:
             if info_parts:
                 st.caption(" · ".join(info_parts))
 
-            # Snippet (vollstaendig, sentence-aware)
+            # Snippet (bereinigt, Fliesstext ohne Ueberschriften)
             if snippet:
-                escaped = html.escape(snippet)
+                cleaned = clean_snippet(snippet, strip_headings=True)
+                escaped = html.escape(cleaned)
                 st.markdown(
                     f'<div style="white-space: pre-wrap; font-size: 0.9em;'
                     f" color: #555; background: #f8f9fa; padding: 10px;"

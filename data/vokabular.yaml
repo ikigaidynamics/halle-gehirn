@@ -34,6 +34,11 @@ projekt:
   direct: "DIRECT — Forschungsprojekt"
   lufo:   "LuFo — Luftfahrtforschungsprogramm (Bork)"
 
+# ── autor · Verfasser des Dokuments (Startbestand) ──
+autor:
+  # Autoren werden per Manifest-Eintrag zugeordnet.
+  # Slug = nachname (lowercase), Label = voller Name.
+
 # ── ansprechperson · Autor/Kontakt (Startbestand) ──
 ansprechperson:
   berger: "Prof. Dr.-Ing. Ulrich Berger (Lehrstuhlinhaber)"

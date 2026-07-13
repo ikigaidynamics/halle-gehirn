@@ -22,6 +22,7 @@ _FACETTEN_LABELS: dict[str, str] = {
     "anlage": "Anlage (Hallengerät)",
     "projekt": "Projekt",
     "ansprechperson": "Ansprechperson",
+    "autor": "Autor",
 }
 
 
@@ -81,6 +82,7 @@ def handle_save(
     anlage: list[str],
     projekt: list[str],
     ansprechperson: list[str],
+    autor: list[str] | None = None,
 ) -> None:
     """Validiert und speichert einen neuen Manifest-Eintrag."""
     if uploaded is None:
@@ -101,6 +103,7 @@ def handle_save(
         anlage=anlage,
         projekt=projekt,
         ansprechperson=ansprechperson,
+        autor=autor or [],
         jahr=jahr,
         vertraulichkeit=vertraulichkeit or "",
         status=status or "final",

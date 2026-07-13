@@ -26,6 +26,7 @@ from halle_gehirn.ui._bestand_tab import render_bestand_tab
 from halle_gehirn.ui._dokument_tab import render_dokument_tab
 from halle_gehirn.ui._indexieren_tab import render_indexieren_tab
 from halle_gehirn.ui._neu_tab_helpers import handle_save, render_vokabular_form
+from halle_gehirn.ui._server_selector import render_ollama_sidebar
 
 _ALLOWED_EXTENSIONS = ["pdf", "docx", "pptx", "xlsx", "md", "txt"]
 _PUBLIC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "public"
@@ -42,6 +43,9 @@ def main() -> None:
 
     # ── Header mit MDZ-Branding ──
     _render_branding_header()
+
+    # ── Sidebar: Ollama-Server-Auswahl ──
+    render_ollama_sidebar()
 
     tab_bestand, tab_neu, tab_viewer, tab_index = st.tabs(
         ["Bestand", "Neues Dokument", "Dokument-Viewer", "Indexieren"],
@@ -274,6 +278,12 @@ def _render_neu_tab() -> None:
             ],
             key=f"ansprechperson_{v}",
         )
+        au_opts = sorted(choices.get("autor", {}))
+        autor = st.multiselect(
+            "Autor", options=au_opts,
+            format_func=lambda s: f"{s} — {choices['autor'][s]}",
+            key=f"autor_{v}",
+        )
 
     # ── Neuen Facetten-Wert anlegen ──
     with st.expander("Neuen Facetten-Wert anlegen"):
@@ -298,6 +308,7 @@ def _render_neu_tab() -> None:
             anlage=anlage,
             projekt=projekt,
             ansprechperson=ansprechperson,
+            autor=autor,
         )
 
 

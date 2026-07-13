@@ -20,6 +20,16 @@ class TableBlock:
 
 
 @dataclass
+class FigureBlock:
+    """Eine aus dem Dokument extrahierte Abbildung."""
+
+    image_path: str  # Pfad zum gespeicherten Bild (PNG)
+    page: int | None = None
+    caption: str | None = None
+    fig_index: int = 0
+
+
+@dataclass
 class ExtractedDoc:
     """Strukturiertes Ergebnis einer Dokument-Extraktion.
 
@@ -33,6 +43,7 @@ class ExtractedDoc:
     title: str
     body_md: str
     tables: list[TableBlock] = field(default_factory=list)
+    figures: list[FigureBlock] = field(default_factory=list)
     page_count: int | None = None
     language: str = "de"
     meta: dict[str, str] = field(default_factory=dict)

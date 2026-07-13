@@ -30,6 +30,7 @@ from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.extraction.base import (
     ExtractedDoc,
     ExtractionError,
+    FigureBlock,
     PartialExtractionError,
     TableBlock,
 )
@@ -168,6 +169,10 @@ class DoclingExtractor:
         """
         body_md = docling_doc.export_to_markdown()
         tables = _extract_tables(docling_doc)
+        source_hash = _compute_path_hash(path)
+        figures = _extract_figures(
+            docling_doc, source_hash, self._settings,
+        )
         page_count = _count_pages(docling_doc)
         title = _extract_title(docling_doc, fallback=path.stem)
         source_type = path.suffix.lstrip(".").lower()
@@ -177,6 +182,7 @@ class DoclingExtractor:
             title=title,
             body_md=body_md,
             tables=tables,
+            figures=figures,
             page_count=page_count,
             language="de",
             meta=_build_meta(path),
@@ -186,6 +192,7 @@ class DoclingExtractor:
             path=str(path),
             pages=page_count,
             tables=len(tables),
+            figures=len(figures),
             md_chars=len(body_md),
         )
         return extracted
@@ -472,6 +479,76 @@ def _extract_title(docling_doc: Any, fallback: str) -> str:
     if name and str(name).strip():
         return str(name).strip()
     return fallback
+
+
+def _compute_path_hash(path: Path) -> str:
+    """Berechnet SHA256-Hash einer Datei (16 Zeichen, fuer Verzeichnisnamen)."""
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(8192), b""):
+            h.update(block)
+    return h.hexdigest()[:16]
+
+
+def _extract_figures(
+    docling_doc: Any,
+    source_hash: str,
+    settings: Settings,
+) -> list[FigureBlock]:
+    """Extrahiert Abbildungen aus dem Docling-Dokument und speichert als PNG.
+
+    Docling-Dokumente mit ``generate_picture_images=True`` enthalten
+    ``pictures``-Items mit PIL-Images. Diese werden als PNG unter
+    ``{figures_dir}/{source_hash}/fig_{index:03d}.png`` gespeichert.
+
+    Args:
+        docling_doc: Das konvertierte Docling-Dokument.
+        source_hash: Hash der Quelldatei (fuer Verzeichnisname).
+        settings: Settings-Instanz (fuer figures_dir).
+
+    Returns:
+        Liste von FigureBlock-Objekten.
+    """
+    pictures = getattr(docling_doc, "pictures", [])
+    if not pictures:
+        return []
+
+    fig_dir = Path(settings.figures_dir) / source_hash
+    fig_dir.mkdir(parents=True, exist_ok=True)
+
+    figures: list[FigureBlock] = []
+    for idx, pic in enumerate(pictures):
+        image = getattr(pic, "image", None)
+        if image is None:
+            continue
+        filename = f"fig_{idx:03d}.png"
+        img_path = fig_dir / filename
+        try:
+            image.save(str(img_path), format="PNG")
+        except Exception as exc:
+            logger.warning(
+                "figure_save_failed", index=idx, error=str(exc),
+            )
+            continue
+        page_no = _get_page_number(pic)
+        caption = getattr(pic, "caption", None)
+        caption_str = str(caption).strip() if caption else None
+        figures.append(FigureBlock(
+            image_path=str(img_path),
+            page=page_no,
+            caption=caption_str,
+            fig_index=idx,
+        ))
+
+    logger.info(
+        "figures_extracted",
+        total_pictures=len(pictures),
+        saved=len(figures),
+        directory=str(fig_dir),
+    )
+    return figures
 
 
 def _build_meta(path: Path) -> dict[str, str]:
