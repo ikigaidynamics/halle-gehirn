@@ -166,7 +166,7 @@ class MarkdownChunker:
             "chunking_sections",
             section_count=len(sections),
             headings=[
-                s.headings[0] if s.headings else "(kein Heading)"
+                s.headings[-1] if s.headings else "(kein Heading)"
                 for s in sections
             ],
         )
@@ -182,7 +182,8 @@ class MarkdownChunker:
         if not text:
             return []
         tokens = count_tokens(text)
-        heading = section.headings[0] if section.headings else "(kein Heading)"
+        # headings ist die Kette top→leaf; das eigene Heading steht am Ende
+        heading = section.headings[-1] if section.headings else "(kein Heading)"
         if tokens <= self._max:
             logger.debug(
                 "section_single_chunk",
@@ -282,7 +283,7 @@ class MarkdownChunker:
                 result.append(chunk)
                 continue
             heading = (
-                chunk.headings[0] if chunk.headings else "(kein Heading)"
+                chunk.headings[-1] if chunk.headings else "(kein Heading)"
             )
             logger.warning(
                 "chunk_hard_split",

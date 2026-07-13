@@ -10,8 +10,6 @@ Die Korpus-Baufunktion wird auch vom Report-Skript
 """
 from __future__ import annotations
 
-import pytest
-
 from halle_gehirn.config import get_settings
 from halle_gehirn.eval.chunk_quality import QualityThresholds, evaluate_chunks
 from halle_gehirn.extraction.base import ExtractedDoc, TableBlock
@@ -52,6 +50,13 @@ def build_abschlussarbeit() -> ExtractedDoc:
         "# Masterarbeit\n\n"
         "Optimierung der Bahnplanung eines Industrieroboters in der "
         "Modellfabrik des Lehrstuhls KI-gestuetzte Automatisierungstechnik.\n\n"
+        "## Kurzfassung\n\n"
+        "Diese Arbeit untersucht die Optimierung der Bahnplanung eines "
+        "Sechsachsroboters in der Modellfabrik. Durch ein datengetriebenes "
+        "Verfahren wird die Taktzeit um zwoelf Prozent reduziert, waehrend "
+        "die Wiederholgenauigkeit nach ISO 9283 innerhalb der Toleranz "
+        "bleibt. Die Ergebnisse wurden an der Anlage validiert und in die "
+        "Demonstrator-Umgebung des Lehrstuhls ueberfuehrt.\n\n"
         "## Inhaltsverzeichnis\n\n"
         "1 Einleitung ......... 1\n"
         "2 Grundlagen ......... 4\n"
@@ -66,6 +71,12 @@ def build_abschlussarbeit() -> ExtractedDoc:
         "Die Kinematik beschreibt den Zusammenhang zwischen Gelenkwinkeln "
         "und Endeffektorpose. Prof. Berger beschreibt dies u.a. im "
         "Vorlesungsskript. " + long_body + "\n\n"
+        "### 2.1 Messaufbau\n\n"
+        "Der Messaufbau besteht aus einem Lasertracker und einem "
+        "Referenzwuerfel am Endeffektor. Alle Messungen wurden bei "
+        "konstanter Hallentemperatur durchgefuehrt, um thermische "
+        "Drift der Roboterstruktur auszuschliessen. Die Datenerfassung "
+        "erfolgte synchron zur Robotersteuerung.\n\n"
         "## 3 Methodik\n\n"
         "Zur Bewertung wurde die Wiederholgenauigkeit nach ISO 9283 "
         "gemessen. Die Ergebnisse sind in der folgenden Tabelle "
@@ -173,33 +184,52 @@ class TestFilterBehaviour:
         assert "Wiederholgenauigkeit" in joined
         assert "Endeffektorpose" in joined
 
+    def test_kurzfassung_survives_front_matter(self) -> None:
+        """Kurzfassung steht vor Kapitel 1, bleibt aber im Index."""
+        _, kept = _chunk_and_filter(build_abschlussarbeit(), "abschlussarbeit")
+        joined = "\n".join(c.text for c in kept)
+        assert "Taktzeit um zwoelf Prozent" in joined, (
+            "Kurzfassung wurde faelschlich als Front-Matter verworfen"
+        )
 
-class TestTailMatterTableRegression:
-    """Dokumentierter Qualitaets-Defekt: Tabellen fallen unter Tail-Matter.
-
-    Der Chunker haengt Tabellen-Chunks ans Listenende — also positional
-    HINTER den Tail-Matter-Cutoff (Literaturverzeichnis/Anhang). Der
-    positionale Tail-Matter-Filter verwirft dadurch bei Abschlussarbeiten
-    und Promotionen ALLE Tabellen, auch inhaltstragende Ergebnistabellen.
-
-    Belegt durch scripts/eval_chunk_quality.py (NACH Filter: Tabelle 0).
-    Der Test ist ``strict=True`` xfail: sobald der Defekt behoben ist,
-    schlaegt er als XPASS an und muss angepasst werden.
-    """
-
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BUG: Tabellen werden ans Listenende gehaengt und fallen "
-        "positional hinter den Tail-Matter-Cutoff — Ergebnistabellen gehen "
-        "fuer Abschlussarbeiten/Promotionen verloren.",
-    )
     def test_content_tables_survive_tail_matter(self) -> None:
-        """Soll-Verhalten: inhaltstragende Tabellen ueberleben den Filter."""
+        """Tabellen ueberleben den positionalen Tail-Matter-Filter.
+
+        Regression: Der Chunker haengt Tabellen ans Listenende (positional
+        hinter dem Tail-Matter-Cutoff); der Filter darf sie deshalb nicht
+        ueber den Index verwerfen.
+        """
         _, kept = _chunk_and_filter(build_abschlussarbeit(), "abschlussarbeit")
         table_chunks = [c for c in kept if c.is_table]
-        assert table_chunks, (
-            "Alle Tabellen-Chunks wurden vom Tail-Matter-Filter verworfen"
+        assert len(table_chunks) > 1, (
+            "Tabellen-Chunks wurden vom Tail-Matter-Filter verworfen"
         )
+        for tc in table_chunks:
+            assert "Messpunkt" in tc.text
+
+
+class TestHeadingHierarchy:
+    """Heading-Ketten (top→leaf) fuer mehrstufige Breadcrumbs."""
+
+    def test_subsection_carries_parent_chain(self) -> None:
+        """Ein Unterkapitel-Chunk kennt seine volle Eltern-Kette."""
+        _, kept = _chunk_and_filter(build_abschlussarbeit(), "abschlussarbeit")
+        sub = [c for c in kept if "Lasertracker" in c.text]
+        assert sub, "2.1-Messaufbau-Chunk fehlt"
+        assert sub[0].headings == [
+            "Masterarbeit", "2 Grundlagen", "2.1 Messaufbau",
+        ]
+
+    def test_chapter_chunks_include_doc_title(self) -> None:
+        """Kapitel-Chunks tragen die Kette ab Dokument-Titel (H1)."""
+        _, kept = _chunk_and_filter(build_abschlussarbeit(), "abschlussarbeit")
+        grundlagen = [
+            c for c in kept
+            if c.headings and c.headings[-1] == "2 Grundlagen"
+        ]
+        assert grundlagen, "Grundlagen-Chunks fehlen"
+        for c in grundlagen:
+            assert c.headings[0] == "Masterarbeit"
 
 
 # ── Aggregierte Qualitaetsbaender (die eigentliche Evaluation) ──
@@ -229,8 +259,9 @@ class TestChunkQualityBands:
         # Chunker verliert kaum Body-Zeichen (vor dem Filtern gemessen)
         raw_report = evaluate_chunks(raw, doc.body_md, thresholds)
         assert raw_report.char_coverage >= 0.9
-        # Alle Tabellen-Teile behalten den Header (Chunker-Rohausgabe)
-        assert raw_report.table_header_fraction == 1.0
+        # Tabellen ueberleben den Filter und behalten ueberall den Header
+        assert report.table_chunks > 0
+        assert report.table_header_fraction == 1.0
 
     def test_mean_tokens_near_target(self) -> None:
         """Durchschnittliche Body-Chunk-Groesse liegt nicht winzig."""
