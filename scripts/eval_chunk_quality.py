@@ -79,6 +79,8 @@ def _print_report(title: str, report: ChunkQualityReport) -> None:
           f"(Teile mit Header)")
     print(f"  Zeichen-Abd.  : {d['char_coverage'] * 100:.0f} %  "
           f"(Body-Zeichen abgedeckt)")
+    print(f"  Seiten-Abd.   : {d['page_coverage'] * 100:.0f} %  "
+          f"(Chunks mit Seite — 0 % ohne Page-Map)")
     print(f"  Leere Chunks  : {d['empty_chunks']}  (Ziel 0)")
 
 

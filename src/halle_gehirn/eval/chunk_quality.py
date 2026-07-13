@@ -45,6 +45,7 @@ class ChunkQualityReport:
     heading_coverage: float  # Body-Chunks mit >=1 Heading
     table_header_fraction: float  # Tabellen-Chunks mit Separator-Zeile
     char_coverage: float  # Anteil Body-Zeichen, den Body-Chunks abdecken
+    page_coverage: float  # Anteil Chunks mit gesetzter Seite (Zitate)
     empty_chunks: int  # Chunks ohne sichtbaren Text (muss 0 sein)
 
     def as_dict(self) -> dict[str, float | int]:
@@ -64,6 +65,7 @@ class ChunkQualityReport:
             "heading_coverage": round(self.heading_coverage, 3),
             "table_header_fraction": round(self.table_header_fraction, 3),
             "char_coverage": round(self.char_coverage, 3),
+            "page_coverage": round(self.page_coverage, 3),
             "empty_chunks": self.empty_chunks,
         }
 
@@ -162,6 +164,10 @@ def evaluate_chunks(
             _char_coverage(body, source_body)
             if source_body is not None
             else 0.0
+        ),
+        page_coverage=(
+            sum(1 for c in chunks if c.page is not None) / len(chunks)
+            if chunks else 0.0
         ),
         empty_chunks=empty,
     )

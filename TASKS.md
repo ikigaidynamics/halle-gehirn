@@ -94,9 +94,19 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
       (JSONDecodeError-Schutz). Memory speichert die BEREINIGTE Antwort (beide
       Pfade). Audit-Log um grounding_score + pii_redacted erweitert.
       9 neue Tests (test_stream_hardening.py).
-- [ ] Zwischenaudit-Arbeitspakete WP3/WP4/WP6/WP7: siehe
-      `docs/audit_2026-07_zwischenstand.md` (WP3 Seiten-Provenienz →
-      WP6 API/Frontend → WP4 Titelblatt-Parser → WP7 Ops).
+- [x] **WP3 — Seiten-Provenienz & Boilerplate:** Neues Modul
+      `extraction/page_map.py` (build_page_map: monotones Element-Matching;
+      join_pages_with_map: exakte Map fuer seitenweise Backends;
+      remove_cross_page_repeats). Docling-Pfad: Element-Provenienz →
+      Page-Map; pymupdf4llm-Fallback: `page_chunks=True` → exakte Map.
+      Chunker weist Body-Chunks Seiten zu (page_for_offset). Boilerplate-
+      Cleaning (Kopf-/Fusszeilen, Seitenzahlen) jetzt verdrahtet
+      (BOILERPLATE_CLEAN, Default an). Tabellen-Fake-Offsets → None
+      (ChunkPayload.char_start/end optional). Eval um page_coverage
+      erweitert. 15 neue Tests; E2E Test-PDF: page_coverage 100 %.
+- [ ] Zwischenaudit-Arbeitspakete WP4/WP6/WP7: siehe
+      `docs/audit_2026-07_zwischenstand.md` (WP6 API/Frontend →
+      WP4 Titelblatt-Parser → WP7 Ops).
 
 ## Phase 9 — Compliance & Security  (vorgezogen)
 - [ ] `governance/{audit,consent,erasure}.py`

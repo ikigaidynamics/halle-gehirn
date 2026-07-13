@@ -13,6 +13,7 @@ import tiktoken
 
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.extraction.base import ExtractedDoc
+from halle_gehirn.extraction.page_map import page_for_offset
 from halle_gehirn.pipeline.chunk_helpers import (
     Section,
     hard_split_text,
@@ -133,6 +134,13 @@ class MarkdownChunker:
 
         # Harte Token-Grenze durchsetzen (letzter Ausweg)
         chunks = self._enforce_hard_limit(chunks)
+
+        # Seiten-Provenienz: Body-Chunks ueber die Page-Map aufloesen
+        # (Tabellen tragen ihre Seite bereits aus dem TableBlock)
+        if doc.page_map:
+            for c in chunks:
+                if not c.is_table and c.page is None:
+                    c.page = page_for_offset(doc.page_map, c.char_start)
 
         # chunk_index fortlaufend setzen
         for idx, c in enumerate(chunks):
