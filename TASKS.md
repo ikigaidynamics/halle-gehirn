@@ -77,10 +77,18 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
       den Front-Matter-Filter (`_ABSTRACT_HEADINGS`-Whitelist) · Heading-Ketten
       top→leaf in `split_sections` (mehrstufige Breadcrumbs) · Eval-Korpus um
       Kurzfassung + Unterkapitel erweitert (70 Chunk-Tests gruen).
-- [ ] Zwischenaudit-Arbeitspakete WP2–WP7: siehe
-      `docs/audit_2026-07_zwischenstand.md` (WP2 Ingest/Contextual Retrieval →
-      WP5 Streaming-Security → WP3 Seiten-Provenienz → WP6 API/Frontend →
-      WP4 Titelblatt-Parser → WP7 Ops).
+- [x] **WP2 — Ingester sauber (Contextual Retrieval + Delta):**
+      Enricher in `run_ingest` verdrahtet (3 Phasen: Prepare → Enrich →
+      Payloads; graceful bei Ollama-Ausfall; Tabellen werden mit angereichert) ·
+      `build_doc_summary` bevorzugt Kurzfassung/Abstract fuer den Kontext-Prompt ·
+      Manifest-Titel ueberschreibt doc.title auch im Ingest-Pfad ·
+      `delete_stale_chunks` (alte Hashes + ueberzaehlige Indizes, Aufruf NACH
+      Upsert) · `--delta`-Flag in reindex.py (skip via source_hash,
+      `docs_unchanged` in IngestStats) · 14 neue Tests (gemockter Ollama/Qdrant).
+- [ ] Zwischenaudit-Arbeitspakete WP3–WP7: siehe
+      `docs/audit_2026-07_zwischenstand.md` (WP5 Streaming-Security →
+      WP3 Seiten-Provenienz → WP6 API/Frontend → WP4 Titelblatt-Parser →
+      WP7 Ops).
 
 ## Phase 9 — Compliance & Security  (vorgezogen)
 - [ ] `governance/{audit,consent,erasure}.py`

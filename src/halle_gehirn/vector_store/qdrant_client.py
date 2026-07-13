@@ -24,6 +24,7 @@ from qdrant_client.models import (
     PointIdsList,
     PointStruct,
     Prefetch,
+    Range,
     SparseVector,
 )
 
@@ -402,6 +403,83 @@ def get_chunks_by_datei(
 
     chunks.sort(key=lambda c: c["payload"].get("chunk_index", 0))
     return chunks
+
+
+# ────────────────────────── Delta-Hygiene ──────────────────────────
+
+
+def delete_stale_chunks(
+    datei: str,
+    current_hash: str,
+    expected_chunk_count: int,
+    client: QdrantClient | None = None,
+) -> int:
+    """Loescht veraltete Punkte eines Dokuments nach dem Re-Ingest.
+
+    Zwei Kategorien werden entfernt:
+    1. Punkte derselben ``datei`` mit ANDEREM ``source_hash``
+       (alte Dokumentversion — neue IDs, alte blieben sonst stehen).
+    2. Punkte mit gleichem ``source_hash``, aber ``chunk_index`` >=
+       *expected_chunk_count* (das Chunking lieferte diesmal weniger
+       Chunks, z.B. nach Filter-Aenderungen).
+
+    Args:
+        datei: Manifest-Pfad des Dokuments (Payload-Feld ``datei``).
+        current_hash: Aktueller SHA256 der Quelldatei.
+        expected_chunk_count: Anzahl Chunks des aktuellen Laufs.
+        client: Optionaler QdrantClient.
+
+    Returns:
+        Anzahl geloeschter Punkte.
+    """
+    c = client or get_qdrant_client()
+    s = get_settings()
+    if not c.collection_exists(s.qdrant_collection):
+        return 0
+
+    stale_filter = Filter(
+        should=[
+            Filter(
+                must=[FieldCondition(
+                    key="datei", match=MatchValue(value=datei),
+                )],
+                must_not=[FieldCondition(
+                    key="source_hash", match=MatchValue(value=current_hash),
+                )],
+            ),
+            Filter(
+                must=[
+                    FieldCondition(
+                        key="source_hash",
+                        match=MatchValue(value=current_hash),
+                    ),
+                    FieldCondition(
+                        key="chunk_index",
+                        range=Range(gte=expected_chunk_count),
+                    ),
+                ],
+            ),
+        ],
+    )
+    count = c.count(
+        collection_name=s.qdrant_collection,
+        count_filter=stale_filter,
+        exact=True,
+    ).count
+    if count == 0:
+        return 0
+    c.delete(
+        collection_name=s.qdrant_collection,
+        points_selector=FilterSelector(filter=stale_filter),
+    )
+    logger.info(
+        "stale_chunks_deleted",
+        datei=datei,
+        count=count,
+        current_hash=current_hash[:12],
+        collection=s.qdrant_collection,
+    )
+    return count
 
 
 # ────────────────────────── Erasure ──────────────────────────

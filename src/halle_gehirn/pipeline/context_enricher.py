@@ -39,6 +39,33 @@ Gib einen kurzen, praegnanten Kontext-Satz (1-2 Saetze, maximal 100 Woerter), \
 der diesen Chunk im Gesamtdokument einordnet. Antworte NUR mit dem Kontext-Satz, \
 ohne Erklaerung oder Prafix."""
 
+# Kurzfassungs-/Abstract-Heading im Body — beste Quelle fuer die Doc-Summary
+_SUMMARY_HEADING_RE = re.compile(
+    r"^#{1,6}\s+(kurzfassung|abstract|zusammenfassung|summary)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_SUMMARY_MAX_CHARS = 800
+
+
+def build_doc_summary(body_md: str, max_chars: int = _SUMMARY_MAX_CHARS) -> str:
+    """Baut die Dokument-Zusammenfassung fuer den Kontext-Prompt.
+
+    Bevorzugt den Kurzfassungs-/Abstract-Abschnitt (bei Abschlussarbeiten
+    die dichteste Selbstbeschreibung); Fallback: Dokumentanfang.
+
+    Args:
+        body_md: Body-Markdown des Dokuments.
+        max_chars: Maximale Laenge der Zusammenfassung.
+
+    Returns:
+        Zusammenfassungs-Text (max. *max_chars* Zeichen).
+    """
+    match = _SUMMARY_HEADING_RE.search(body_md)
+    if match:
+        return body_md[match.start() : match.start() + max_chars]
+    return body_md[:max_chars]
+
 
 class OllamaContextEnricher:
     """Contextual-Retrieval-Enricher via Ollama.
@@ -74,7 +101,7 @@ class OllamaContextEnricher:
         if not chunks:
             return chunks
 
-        doc_summary = doc.body_md[:500]
+        doc_summary = build_doc_summary(doc.body_md)
         tasks = [
             self._enrich_single(chunk, doc.title, doc_summary)
             for chunk in chunks
@@ -82,20 +109,33 @@ class OllamaContextEnricher:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         success = 0
+        failures = 0
         for chunk, result in zip(chunks, results, strict=True):
             if isinstance(result, str) and result:
                 chunk.context_prefix = result
                 success += 1
             elif isinstance(result, Exception):
-                logger.warning(
+                failures += 1
+                logger.debug(
                     "context_enrich_failed",
                     chunk_index=chunk.chunk_index,
                     error=str(result),
                 )
+        if failures and success == 0:
+            # Ollama komplett nicht erreichbar — eine Warnung statt N
+            logger.warning(
+                "context_enrichment_unavailable",
+                source=doc.source,
+                chunks=len(chunks),
+                sample_error=str(
+                    next(r for r in results if isinstance(r, Exception))
+                ),
+            )
         logger.info(
             "context_enrichment_done",
             total=len(chunks),
             success=success,
+            failures=failures,
         )
         return chunks
 
