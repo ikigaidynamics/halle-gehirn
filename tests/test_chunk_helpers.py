@@ -98,3 +98,34 @@ class TestSplitSections:
         """Leerer Body ergibt keine Sections."""
         sections = split_sections("")
         assert len(sections) == 0
+
+    def test_heading_hierarchy_chain(self) -> None:
+        """Sections tragen die volle Heading-Kette top→leaf."""
+        body = (
+            "# Titel\n\nIntro.\n\n"
+            "## 2 Grundlagen\n\nText.\n\n"
+            "### 2.1 Kinematik\n\nDetail.\n\n"
+            "## 3 Methodik\n\nWeiter.\n"
+        )
+        sections = split_sections(body)
+        chains = [s.headings for s in sections]
+        assert chains == [
+            ["Titel"],
+            ["Titel", "2 Grundlagen"],
+            ["Titel", "2 Grundlagen", "2.1 Kinematik"],
+            ["Titel", "3 Methodik"],
+        ]
+
+    def test_hierarchy_pops_on_same_level(self) -> None:
+        """Gleichrangige Headings ersetzen einander im Stack."""
+        body = "## A\n\nText A.\n\n## B\n\nText B."
+        sections = split_sections(body)
+        assert sections[0].headings == ["A"]
+        assert sections[1].headings == ["B"]
+
+    def test_hierarchy_level_skip(self) -> None:
+        """Level-Sprung (H1 → H3) haelt die Kette konsistent."""
+        body = "# T\n\nIntro.\n\n### Tief\n\nDetail.\n\n## Zurueck\n\nText."
+        sections = split_sections(body)
+        assert sections[1].headings == ["T", "Tief"]
+        assert sections[2].headings == ["T", "Zurueck"]

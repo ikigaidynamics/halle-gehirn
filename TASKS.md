@@ -69,12 +69,18 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
 - [x] `eval/chunk_quality.py` (ChunkQualityReport: Token-Verteilung, Fragmente,
       Heading-/Zeichen-Abdeckung, Tabellen-Integritaet) + `tests/test_chunk_quality.py`
       (Invarianten + Qualitaetsbaender) + `scripts/eval_chunk_quality.py` (Report)
-- [ ] **DEFEKT (offen, via Chunk-Eval gefunden):** Tabellen-Chunks werden ans
-      Listenende gehaengt und fallen positional hinter den Tail-Matter-Cutoff →
-      `filter_chunks` verwirft bei Abschlussarbeiten/Promotionen ALLE Tabellen
-      (auch Ergebnistabellen). Dokumentiert als strict-`xfail`
-      `test_content_tables_survive_tail_matter`. Fix (Filter tabellen-bewusst
-      oder Tabellen an Dokumentposition einsortieren) mit Jost abstimmen.
+- [x] **DEFEKT behoben (WP1):** Tabellen fallen nicht mehr unter den positionalen
+      Tail-/Front-Matter-Drop (`chunk_filter.py`: is_table-Ausnahme); ehem.
+      xfail `test_content_tables_survive_tail_matter` ist jetzt regulaerer Test.
+- [x] **WP1 — BTU-Masterarbeiten sauber chunken** (siehe
+      `docs/audit_2026-07_zwischenstand.md`): Kurzfassung/Abstract ueberleben
+      den Front-Matter-Filter (`_ABSTRACT_HEADINGS`-Whitelist) · Heading-Ketten
+      top→leaf in `split_sections` (mehrstufige Breadcrumbs) · Eval-Korpus um
+      Kurzfassung + Unterkapitel erweitert (70 Chunk-Tests gruen).
+- [ ] Zwischenaudit-Arbeitspakete WP2–WP7: siehe
+      `docs/audit_2026-07_zwischenstand.md` (WP2 Ingest/Contextual Retrieval →
+      WP5 Streaming-Security → WP3 Seiten-Provenienz → WP6 API/Frontend →
+      WP4 Titelblatt-Parser → WP7 Ops).
 
 ## Phase 9 — Compliance & Security  (vorgezogen)
 - [ ] `governance/{audit,consent,erasure}.py`
