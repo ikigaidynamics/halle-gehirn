@@ -1,8 +1,10 @@
 """Hilfstypen und -funktionen fuer den Chunker.
 
-Enthaelt Section-Splitting (Markdown an Headings zerlegen) und
-Tabellen-Splitting (uebergrosse Markdown-Tabellen an Zeilengrenzen
-teilen, Header wird in jedem Teil wiederholt).
+Enthaelt Section-Splitting (Markdown an Headings zerlegen),
+hierarchisches Section-Merging (Geschwister-Sektionen unter gleichem
+Eltern-Heading zusammenfassen) und Tabellen-Splitting (uebergrosse
+Markdown-Tabellen an Zeilengrenzen teilen, Header wird in jedem Teil
+wiederholt).
 """
 from __future__ import annotations
 
@@ -103,6 +105,126 @@ def split_sections(body: str) -> list[Section]:
             headings=[text for _, text in heading_stack],
         ))
     return sections
+
+
+# ── Hierarchisches Section-Merging ──
+
+# Strukturelle Headings, die nie zusammengefasst werden duerfen (Verzeichnisse,
+# Anhang, Erklaerungen, Kurzfassung/Abstract). Chunk-Filter verlassen sich
+# darauf, dass diese als eigene Chunks sichtbar bleiben (Verzeichnis-Drop,
+# Tail-Matter-Drop, Abstract-Whitelist). Lowercase, ohne Abschnittsnummer.
+_UNMERGEABLE_HEADINGS: frozenset[str] = frozenset({
+    # Verzeichnisse
+    "inhaltsverzeichnis", "inhaltverzeichnis",
+    "abbildungsverzeichnis", "tabellenverzeichnis",
+    "abkuerzungsverzeichnis", "abkürzungsverzeichnis",
+    "literaturverzeichnis", "quellenverzeichnis",
+    # Tail-Matter
+    "anhang", "anhaenge", "anhänge",
+    "appendix", "appendices",
+    "literatur", "quellen",
+    "erklaerung", "erklärung",
+    "eidesstattliche erklaerung", "eidesstattliche erklärung",
+    "eidesstattliche versicherung",
+    "selbstaendigkeitserklaerung", "selbständigkeitserklärung",
+    "selbstständigkeitserklärung",
+    "eigenstaendigkeitserklaerung", "eigenständigkeitserklärung",
+    # EN-Varianten
+    "table of contents", "list of figures", "list of tables",
+    "references", "bibliography",
+    # Kurzfassung/Abstract: vom Front-Matter-Filter als Ausnahme behandelt,
+    # muss als eigener Chunk erkennbar bleiben
+    "kurzfassung", "kurzzusammenfassung", "kurzreferat",
+    "abstract", "zusammenfassung", "summary",
+})
+
+# Nummeriertes Heading: "2 Grundlagen", "2.1 Kinematik", "1. Einleitung"
+_NUM_PREFIX_RE = re.compile(r"^\d+(\.\d+)*\.?\s+")
+
+
+def merge_sibling_sections(
+    sections: list[Section],
+    target_tokens: int,
+    count_tokens_fn: Callable[[str], int],
+) -> list[Section]:
+    """Fasst aufeinanderfolgende Geschwister-Sektionen zusammen.
+
+    Zwei Sektionen werden zusammengefasst, wenn:
+    - sie denselben Eltern-Heading-Pfad teilen (``headings[:-1]`` identisch)
+      ODER die zweite ein direktes Kind der ersten ist (Headings der ersten
+      sind Praefix der zweiten), UND
+    - die kombinierte Token-Anzahl <= *target_tokens* ist, UND
+    - keine der beiden Sektionen ein strukturelles Heading hat (Verzeichnisse,
+      Anhang, Erklaerungen) — diese muessen fuer den Chunk-Filter als eigene
+      Chunks sichtbar bleiben.
+
+    Greedy, single-pass: Der Akkumulator waechst, bis die naechste Sektion
+    nicht mehr passt. Sektionen OHNE Headings (Text vor dem ersten Heading)
+    werden nie zusammengefasst.
+
+    Args:
+        sections: Sektionen aus ``split_sections()``.
+        target_tokens: Soft-Obergrenze fuer zusammengefasste Sektionen.
+        count_tokens_fn: Token-Zaehlfunktion.
+
+    Returns:
+        Neue Liste (keine Mutation der Eingabe).
+    """
+    if len(sections) <= 1:
+        return list(sections)
+
+    merged: list[Section] = [sections[0]]
+    merges = 0
+
+    for nxt in sections[1:]:
+        cur = merged[-1]
+        if (
+            cur.headings
+            and nxt.headings
+            and _can_merge(cur, nxt)
+            and count_tokens_fn(cur.text + "\n\n" + nxt.text) <= target_tokens
+        ):
+            # Zusammenfassen: Text verketten, Headings des Akkumulators behalten
+            merged[-1] = Section(
+                text=cur.text + "\n\n" + nxt.text,
+                start=cur.start,
+                headings=cur.headings,
+            )
+            merges += 1
+        else:
+            merged.append(nxt)
+
+    if merges:
+        logger.info(
+            "sections_merged",
+            original=len(sections),
+            merged=len(merged),
+            merges=merges,
+        )
+    return merged
+
+
+def _is_unmergeable(section: Section) -> bool:
+    """Prueft ob eine Sektion ein strukturelles Heading hat."""
+    if not section.headings:
+        return False
+    leaf = section.headings[-1].strip().lower()
+    leaf = _NUM_PREFIX_RE.sub("", leaf)
+    return leaf in _UNMERGEABLE_HEADINGS
+
+
+def _can_merge(a: Section, b: Section) -> bool:
+    """Prueft ob zwei Sektionen zusammenfassbar sind (Heading-Relation)."""
+    # Strukturelle Headings nie zusammenfassen
+    if _is_unmergeable(a) or _is_unmergeable(b):
+        return False
+    parent_a = a.headings[:-1]
+    parent_b = b.headings[:-1]
+    # Fall 1: Geschwister (gleicher Eltern-Pfad)
+    if parent_a == parent_b:
+        return True
+    # Fall 2: b ist direktes Kind von a (a.headings ist Praefix von b.headings)
+    return b.headings[: len(a.headings)] == a.headings
 
 
 # ── Tabellen-Splitting ──

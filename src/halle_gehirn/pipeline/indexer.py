@@ -13,6 +13,7 @@ import structlog
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.embeddings.ollama_embedder import OllamaEmbedder
 from halle_gehirn.embeddings.sparse_embedder import FastEmbedSparseEmbedder
+from halle_gehirn.pipeline.progress import ProgressCallback, ProgressEvent
 from halle_gehirn.vector_store.qdrant_client import (
     delete_stale_chunks,
     upsert_chunks,
@@ -34,6 +35,7 @@ class IndexResult:
 async def embed_and_upsert(
     payloads: list[ChunkPayload],
     settings: Settings | None = None,
+    on_progress: ProgressCallback = None,
 ) -> IndexResult:
     """Erzeugt Embeddings, upserted in Qdrant und raeumt Altbestand auf.
 
@@ -45,6 +47,7 @@ async def embed_and_upsert(
     Args:
         payloads: Liste von ChunkPayloads.
         settings: Optionale Settings.
+        on_progress: Optionaler Callback fuer Fortschrittsereignisse.
 
     Returns:
         IndexResult mit Statistiken.
@@ -56,10 +59,38 @@ async def embed_and_upsert(
     sparse_embedder = FastEmbedSparseEmbedder(settings=s)
 
     logger.info("embedding_start", chunks=len(texts))
+    if on_progress:
+        on_progress(ProgressEvent(
+            phase="embed",
+            datei="(alle)",
+            doc_index=0,
+            doc_total=0,
+            detail=f"Dense-Embedding fuer {len(texts)} Chunks...",
+            chunks_total=len(texts),
+        ))
     dense_vecs = await dense_embedder.embed(texts)
+    if on_progress:
+        on_progress(ProgressEvent(
+            phase="embed",
+            datei="(alle)",
+            doc_index=0,
+            doc_total=0,
+            detail=f"Sparse-Embedding fuer {len(texts)} Chunks...",
+            chunks_total=len(texts),
+            chunks_so_far=len(texts),
+        ))
     sparse_vecs = sparse_embedder.embed(texts)
     logger.info("embedding_done", dense=len(dense_vecs), sparse=len(sparse_vecs))
 
+    if on_progress:
+        on_progress(ProgressEvent(
+            phase="upsert",
+            datei="(alle)",
+            doc_index=0,
+            doc_total=0,
+            detail=f"Upsert {len(payloads)} Chunks in Qdrant...",
+            chunks_total=len(payloads),
+        ))
     total = upsert_chunks(payloads, dense_vecs, sparse_vecs)
     logger.info("upsert_complete", total=total)
 
