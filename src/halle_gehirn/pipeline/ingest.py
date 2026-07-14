@@ -287,16 +287,12 @@ def compute_source_hash(path: Path) -> str:
 def deterministic_chunk_id(source_hash: str, chunk_index: int) -> str:
     """Erzeugt eine deterministische Chunk-ID.
 
-    Args:
-        source_hash: SHA256-Hash der Quelldatei.
-        chunk_index: Index des Chunks im Dokument.
-
-    Returns:
-        Hex-String der deterministischen ID.
+    Re-Export aus ``vector_store.qdrant_client`` fuer Abwaertskompatibilitaet.
     """
-    return hashlib.sha256(
-        f"{source_hash}:{chunk_index}".encode()
-    ).hexdigest()[:32]
+    from halle_gehirn.vector_store.qdrant_client import (
+        deterministic_chunk_id as _impl,
+    )
+    return _impl(source_hash, chunk_index)
 
 
 def build_chunk_payload(
