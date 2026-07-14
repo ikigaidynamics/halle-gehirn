@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import random
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -27,6 +29,7 @@ from halle_gehirn.pipeline.chunk_filter import filter_chunks
 from halle_gehirn.pipeline.chunker import Chunk, MarkdownChunker
 from halle_gehirn.pipeline.context_enricher import OllamaContextEnricher
 from halle_gehirn.pipeline.figure_linker import link_figures_to_chunks
+from halle_gehirn.pipeline.progress import ProgressCallback, ProgressEvent
 from halle_gehirn.vector_store.schema import (
     Bereich,
     ChunkPayload,
@@ -377,6 +380,7 @@ def run_ingest(
     settings: Settings | None = None,
     selected_dateien: set[str] | None = None,
     skip_hashes: set[str] | None = None,
+    on_progress: ProgressCallback = None,
 ) -> tuple[list[ChunkPayload], IngestStats]:
     """Fuehrt die Ingest-Pipeline aus (ohne Qdrant-Upsert).
 
@@ -393,10 +397,12 @@ def run_ingest(
             Dokumente werden verarbeitet. None = alle verarbeiten.
         skip_hashes: Bereits indexierte source_hashes — Dokumente mit
             unveraendertem Hash werden uebersprungen (Delta-Ingest).
+        on_progress: Optionaler Callback fuer Fortschrittsereignisse.
 
     Returns:
         Tuple aus (Liste aller ChunkPayloads, IngestStats).
     """
+    t0 = time.monotonic()
     s = settings or get_settings()
     base = manual_dir or _MANUAL_DIR
     entries = load_manifest(manifest_path)
@@ -424,10 +430,20 @@ def run_ingest(
     # Phase 1: Extract + Chunk + Filter
     prepared = _prepare_all(
         entries, base, extractors, chunker, s, skip_hashes, stats,
+        on_progress=on_progress, t0=t0,
     )
 
     # Phase 2: Contextual Retrieval (eine async-Phase fuer alle Dokumente)
     if s.use_contextual_retrieval and prepared:
+        if on_progress:
+            on_progress(ProgressEvent(
+                phase="enrich",
+                datei="(alle)",
+                doc_index=0,
+                doc_total=len(prepared),
+                detail=f"Kontextanreicherung fuer {len(prepared)} Dokumente...",
+                elapsed_s=time.monotonic() - t0,
+            ))
         _run_enrichment(prepared, s)
 
     # Phase 3: Payloads bauen
@@ -467,10 +483,25 @@ def _prepare_all(
     settings: Settings,
     skip_hashes: set[str] | None,
     stats: IngestStats,
+    on_progress: ProgressCallback = None,
+    t0: float = 0.0,
 ) -> list[_PreparedDoc]:
     """Phase 1: Extrahiert, chunked und filtert alle Eintraege."""
     prepared: list[_PreparedDoc] = []
-    for entry in entries:
+    total = len(entries)
+    chunks_so_far = 0
+
+    for idx, entry in enumerate(entries, 1):
+        if on_progress:
+            on_progress(ProgressEvent(
+                phase="extract",
+                datei=entry.datei,
+                doc_index=idx,
+                doc_total=total,
+                detail=f"Extrahiere {entry.datei}...",
+                chunks_so_far=chunks_so_far,
+                elapsed_s=time.monotonic() - t0,
+            ))
         try:
             prep = _prepare_entry(
                 entry, base_dir, extractors, chunker, settings, skip_hashes,
@@ -479,16 +510,66 @@ def _prepare_all(
             stats.docs_skipped += 1
             stats.errors.append(f"{entry.datei}: {exc}")
             logger.warning("ingest_doc_skipped", datei=entry.datei, error=str(exc))
+            continue
         except Exception as exc:
             stats.docs_failed += 1
             stats.errors.append(f"{entry.datei}: {exc}")
             logger.error("ingest_doc_failed", datei=entry.datei, error=str(exc))
-        else:
-            if prep is None:
-                stats.docs_unchanged += 1
-                continue
-            prepared.append(prep)
+            continue
+
+        if prep is None:
+            stats.docs_unchanged += 1
+            continue
+        prepared.append(prep)
+        chunks_so_far += len(prep.chunks)
+
+        # Fortschritt nach dem Chunking
+        if on_progress:
+            _emit_chunk_progress(
+                on_progress, prep, idx, total, chunks_so_far, t0,
+            )
     return prepared
+
+
+def _emit_chunk_progress(
+    cb: Any,
+    prep: _PreparedDoc,
+    doc_index: int,
+    doc_total: int,
+    chunks_so_far: int,
+    t0: float,
+) -> None:
+    """Emittiert ein Fortschrittsereignis nach dem Chunking."""
+    chunks = prep.chunks
+    # Zufaelliger Sample-Chunk
+    sample: Chunk | None = None
+    if chunks:
+        sample = random.choice(chunks)
+    # Strategie-Zusammenfassung
+    table_count = sum(1 for c in chunks if c.is_table)
+    body_count = len(chunks) - table_count
+    strategy = f"{body_count} Body + {table_count} Tabellen"
+    # Abbildungen
+    fig_count = len(prep.doc.figures)
+    fig_paths = [f.image_path for f in prep.doc.figures if f.image_path]
+
+    cb(ProgressEvent(
+        phase="chunk",
+        datei=prep.entry.datei,
+        doc_index=doc_index,
+        doc_total=doc_total,
+        detail=f"{len(chunks)} Chunks erzeugt ({strategy})",
+        chunks_so_far=chunks_so_far,
+        chunks_total=len(chunks),
+        sample_chunk=sample.text[:300] if sample else None,
+        sample_heading=(
+            " > ".join(sample.headings) if sample and sample.headings else None
+        ),
+        strategy=strategy,
+        figures_count=fig_count,
+        figure_paths=fig_paths[:5],
+        elapsed_s=time.monotonic() - t0,
+    ))
 
 
 def _prepare_entry(

@@ -152,6 +152,21 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
       + Streamlit `_render_sources` zeigen Bilder via `st.image()`.
       27 neue Tests (test_figures.py); ruff+mypy gruen.
 
+- [x] **WP10 — Hierarchisches Section-Merging + Ingester-Fortschritt:**
+      `merge_sibling_sections()` in `chunk_helpers.py`: Greedy-Merge
+      aufeinanderfolgender Geschwister-Sektionen (gleicher Eltern-Heading-Pfad
+      oder Eltern-Kind-Beziehung) bis `target_tokens`. Strukturelle Headings
+      (Verzeichnisse, Anhang, Kurzfassung/Abstract) bleiben als eigene Chunks
+      erhalten (`_UNMERGEABLE_HEADINGS`). In `chunker._chunk_body()` verdrahtet
+      (nach `split_sections`, vor Per-Section-Chunking); char_end auf
+      Body-Laenge begrenzt.
+      Callback-basierter Ingest-Fortschritt: `pipeline/progress.py`
+      (`ProgressEvent` + `ProgressCallback`), verdrahtet in `run_ingest()`
+      und `embed_and_upsert()`. Streamlit-UI (`_indexieren_tab.py`) zeigt
+      pro Dokument: Fortschrittsbalken, ETA, Sample-Chunk, Chunking-Strategie,
+      Abbildungs-Thumbnails. Embed-Phase: Queue-basierte Thread-Kommunikation.
+      11 neue Merge-Tests + 1 Chunker-Test aktualisiert; ruff+mypy gruen.
+
 **Zwischenaudit vollstaendig abgearbeitet (WP1–WP7).** Offen bleiben nur
 4 vorbestehende Test-Failures (Docling-Tabellen + Reranker-Fallback,
 Umgebungs-Drift, unabhaengig vom Audit) und ein latenter mypy-Hinweis

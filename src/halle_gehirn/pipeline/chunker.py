@@ -17,6 +17,7 @@ from halle_gehirn.extraction.page_map import page_for_offset
 from halle_gehirn.pipeline.chunk_helpers import (
     Section,
     hard_split_text,
+    merge_sibling_sections,
     split_sections,
     split_table,
 )
@@ -172,9 +173,14 @@ class MarkdownChunker:
     def _chunk_body(self, body: str) -> list[Chunk]:
         """Zerlegt den Body-Markdown in Chunks."""
         sections = split_sections(body)
+        pre_merge = len(sections)
+        sections = merge_sibling_sections(
+            sections, self._target, count_tokens,
+        )
         logger.debug(
             "chunking_sections",
             section_count=len(sections),
+            pre_merge=pre_merge,
             headings=[
                 s.headings[-1] if s.headings else "(kein Heading)"
                 for s in sections
@@ -184,6 +190,12 @@ class MarkdownChunker:
         for section in sections:
             section_chunks = self._chunk_section(section)
             chunks.extend(section_chunks)
+        # Zusammengefasste Sektionen koennen durch den "\n\n"-Separator
+        # leicht laengeren Text als den Original-Body-Span erzeugen.
+        # Offsets auf die Body-Laenge begrenzen.
+        body_len = len(body)
+        for c in chunks:
+            c.char_end = min(c.char_end, body_len)
         return chunks
 
     def _chunk_section(self, section: Section) -> list[Chunk]:

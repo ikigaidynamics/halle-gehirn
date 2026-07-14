@@ -1,7 +1,12 @@
-"""Tests fuer Chunk-Hilfsmodul (Tabellen-Splitting, Section-Splitting)."""
+"""Tests fuer Chunk-Hilfsmodul (Tabellen-Splitting, Section-Splitting, Merging)."""
 from __future__ import annotations
 
-from halle_gehirn.pipeline.chunk_helpers import split_sections, split_table
+from halle_gehirn.pipeline.chunk_helpers import (
+    Section,
+    merge_sibling_sections,
+    split_sections,
+    split_table,
+)
 from halle_gehirn.pipeline.chunker import count_tokens
 
 
@@ -129,3 +134,117 @@ class TestSplitSections:
         sections = split_sections(body)
         assert sections[1].headings == ["T", "Tief"]
         assert sections[2].headings == ["T", "Zurueck"]
+
+
+class TestMergeSiblingSections:
+    """Tests fuer das hierarchische Section-Merging."""
+
+    def _ct(self, text: str) -> int:
+        """Einfache Token-Zaehlung: Woerter."""
+        return len(text.split())
+
+    def test_siblings_merged(self) -> None:
+        """Geschwister unter gleichem Eltern-Heading werden zusammengefasst."""
+        sections = [
+            Section(text="## A\n\nKurz.", start=0, headings=["T", "A"]),
+            Section(text="## B\n\nAuch kurz.", start=20, headings=["T", "B"]),
+        ]
+        merged = merge_sibling_sections(sections, target_tokens=100, count_tokens_fn=self._ct)
+        assert len(merged) == 1
+        assert "Kurz." in merged[0].text
+        assert "Auch kurz." in merged[0].text
+
+    def test_parent_child_merged(self) -> None:
+        """Kind-Sektion wird in Eltern-Sektion zusammengefasst."""
+        sections = [
+            Section(text="## Kap\n\nIntro.", start=0, headings=["T", "Kap"]),
+            Section(text="### Sub\n\nDetail.", start=20, headings=["T", "Kap", "Sub"]),
+        ]
+        merged = merge_sibling_sections(sections, target_tokens=100, count_tokens_fn=self._ct)
+        assert len(merged) == 1
+
+    def test_no_merge_when_too_large(self) -> None:
+        """Zusammenfassung wird bei Token-Ueberschreitung verhindert."""
+        sections = [
+            Section(text="## A\n\n" + "Wort " * 50, start=0, headings=["T", "A"]),
+            Section(text="## B\n\n" + "Wort " * 50, start=500, headings=["T", "B"]),
+        ]
+        merged = merge_sibling_sections(sections, target_tokens=60, count_tokens_fn=self._ct)
+        assert len(merged) == 2
+
+    def test_no_merge_different_parents(self) -> None:
+        """Sektionen mit verschiedenen Eltern werden nicht zusammengefasst."""
+        sections = [
+            Section(text="## A\n\nText.", start=0, headings=["X", "A"]),
+            Section(text="## B\n\nText.", start=20, headings=["Y", "B"]),
+        ]
+        merged = merge_sibling_sections(sections, target_tokens=100, count_tokens_fn=self._ct)
+        assert len(merged) == 2
+
+    def test_headingless_section_not_merged(self) -> None:
+        """Sektionen ohne Headings (Vorspann) werden nie zusammengefasst."""
+        sections = [
+            Section(text="Vorspann.", start=0, headings=[]),
+            Section(text="## A\n\nText.", start=15, headings=["A"]),
+        ]
+        merged = merge_sibling_sections(sections, target_tokens=100, count_tokens_fn=self._ct)
+        assert len(merged) == 2
+
+    def test_empty_input(self) -> None:
+        """Leere Eingabe ergibt leere Ausgabe."""
+        assert merge_sibling_sections([], target_tokens=100, count_tokens_fn=self._ct) == []
+
+    def test_single_section_unchanged(self) -> None:
+        """Einzelne Sektion bleibt unveraendert."""
+        sections = [Section(text="## A\n\nText.", start=0, headings=["A"])]
+        merged = merge_sibling_sections(sections, target_tokens=100, count_tokens_fn=self._ct)
+        assert len(merged) == 1
+
+    def test_chain_of_three_siblings(self) -> None:
+        """Drei Geschwister werden schrittweise zusammengefasst."""
+        sections = [
+            Section(text="## A\n\nA.", start=0, headings=["T", "A"]),
+            Section(text="## B\n\nB.", start=10, headings=["T", "B"]),
+            Section(text="## C\n\nC.", start=20, headings=["T", "C"]),
+        ]
+        merged = merge_sibling_sections(sections, target_tokens=100, count_tokens_fn=self._ct)
+        assert len(merged) == 1
+        assert "A." in merged[0].text
+        assert "B." in merged[0].text
+        assert "C." in merged[0].text
+
+    def test_preserves_first_heading(self) -> None:
+        """Zusammengefasste Sektion behaelt die Headings der ersten."""
+        sections = [
+            Section(text="## A\n\nText A.", start=0, headings=["T", "A"]),
+            Section(text="## B\n\nText B.", start=20, headings=["T", "B"]),
+        ]
+        merged = merge_sibling_sections(sections, target_tokens=100, count_tokens_fn=self._ct)
+        assert merged[0].headings == ["T", "A"]
+
+    def test_preserves_first_start(self) -> None:
+        """Zusammengefasste Sektion behaelt den Start-Offset der ersten."""
+        sections = [
+            Section(text="## A\n\nX.", start=42, headings=["T", "A"]),
+            Section(text="## B\n\nY.", start=60, headings=["T", "B"]),
+        ]
+        merged = merge_sibling_sections(sections, target_tokens=100, count_tokens_fn=self._ct)
+        assert merged[0].start == 42
+
+    def test_integration_with_split_sections(self) -> None:
+        """Merge nach split_sections reduziert die Section-Anzahl."""
+        body = (
+            "# Titel\n\nIntro.\n\n"
+            "## 2 Grundlagen\n\nKurz.\n\n"
+            "### 2.1 Kinematik\n\nDetail.\n\n"
+            "### 2.2 Dynamik\n\nMehr Detail.\n\n"
+            "## 3 Methodik\n\nWeiter.\n"
+        )
+        sections = split_sections(body)
+        assert len(sections) == 5  # Titel, 2 Grundlagen, 2.1, 2.2, 3 Methodik
+        merged = merge_sibling_sections(
+            sections, target_tokens=500, count_tokens_fn=count_tokens,
+        )
+        # 2.1 Kinematik + 2.2 Dynamik sollten in 2 Grundlagen zusammengefasst werden,
+        # oder die beiden Unterkapitel werden zusammengefasst
+        assert len(merged) < len(sections)

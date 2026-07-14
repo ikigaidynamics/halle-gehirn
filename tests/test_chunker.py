@@ -40,8 +40,8 @@ class TestMarkdownChunker:
         assert chunks[0].text == "Ein kurzer Absatz."
         assert chunks[0].chunk_index == 0
 
-    def test_heading_sections_split(self) -> None:
-        """Dokument mit Headings wird in Sections aufgeteilt."""
+    def test_heading_sections_merged_when_small(self) -> None:
+        """Kleine Geschwister-Sections werden zusammengefasst."""
         body = (
             "## Einleitung\n\nErster Absatz.\n\n"
             "## Methode\n\nZweiter Absatz.\n\n"
@@ -50,10 +50,12 @@ class TestMarkdownChunker:
         doc = _make_doc(body)
         chunker = MarkdownChunker()
         chunks = chunker.chunk(doc)
-        assert len(chunks) >= 3
-        # Jeder Chunk hat fortlaufenden Index
-        indices = [c.chunk_index for c in chunks]
-        assert indices == list(range(len(chunks)))
+        # Kleine Geschwister werden zu einem Chunk zusammengefasst
+        assert len(chunks) == 1
+        assert "Einleitung" in chunks[0].text
+        assert "Methode" in chunks[0].text
+        assert "Ergebnis" in chunks[0].text
+        assert chunks[0].chunk_index == 0
 
     def test_table_separate_chunk(self) -> None:
         """Tabellen werden als eigene Chunks behandelt."""
