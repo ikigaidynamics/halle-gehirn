@@ -7,9 +7,11 @@ Andere Collections in derselben Instanz werden NIEMALS angefasst.
 from __future__ import annotations
 
 import hashlib
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -506,6 +508,9 @@ def delete_by_source_hash(
 ) -> None:
     """Loescht alle Punkte mit gegebenem source_hash (Right-to-Erasure).
 
+    Entfernt auch das zugehoerige Abbildungs-Verzeichnis
+    ``{figures_dir}/{source_hash[:16]}/`` falls vorhanden.
+
     Args:
         source_hash: SHA256-Hash der Quelldatei.
         client: Optionaler QdrantClient.
@@ -525,6 +530,11 @@ def delete_by_source_hash(
             )
         ),
     )
+    # Abbildungen auf Disk entfernen (graceful bei fehlendem Verzeichnis)
+    fig_dir = Path(s.figures_dir) / source_hash[:16]
+    if fig_dir.is_dir():
+        shutil.rmtree(fig_dir)
+        logger.info("figures_dir_deleted", path=str(fig_dir))
     logger.info(
         "erasure_done",
         source_hash=source_hash[:12],

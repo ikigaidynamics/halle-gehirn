@@ -35,6 +35,8 @@ class Source(BaseModel):
     score: float = 0.0
     doc_type: str = ""
     breadcrumb: str = ""
+    figure_refs: list[str] = Field(default_factory=list)
+    figure_captions: list[str] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):

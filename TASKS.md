@@ -139,6 +139,19 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
       `deterministic_chunk_id` nach qdrant_client verschoben (Re-Export in
       ingest, kein Zirkelimport). 4 neue Tests (gemocktes HTTP).
 
+- [x] **WP9 — Bild-Integration (feature/images):**
+      Docling Serve liefert Bilder per `image_export_mode=embedded` (Base64
+      data-URIs). Shared Helper `extraction/figure_utils.py` (DRY: save_figures,
+      extract_figures_local, extract_figures_from_serve). `pipeline/figure_linker.py`
+      verknuepft FigureBlocks mit Chunks (primaer: Caption-Nummern-Regex
+      DE/EN, Fallback: Seitenzuordnung). ChunkPayload + Chunk um `figure_refs`,
+      `figure_captions`, `figure_description` (VLM-Reserve) erweitert.
+      Caption-Fold: Captions werden an `text` (nicht `text_raw`) angehaengt
+      fuer Embedding-Retrievability. Erasure: `delete_by_source_hash` entfernt
+      auch `data/figures/{hash[:16]}/`. UI: `Source`-Schema + `_build_sources`
+      + Streamlit `_render_sources` zeigen Bilder via `st.image()`.
+      27 neue Tests (test_figures.py); ruff+mypy gruen.
+
 **Zwischenaudit vollstaendig abgearbeitet (WP1–WP7).** Offen bleiben nur
 4 vorbestehende Test-Failures (Docling-Tabellen + Reranker-Fallback,
 Umgebungs-Drift, unabhaengig vom Audit) und ein latenter mypy-Hinweis

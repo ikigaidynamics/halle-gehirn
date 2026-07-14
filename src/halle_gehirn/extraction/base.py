@@ -23,7 +23,7 @@ class TableBlock:
 class FigureBlock:
     """Eine aus dem Dokument extrahierte Abbildung."""
 
-    image_path: str  # Pfad zum gespeicherten Bild (PNG)
+    image_path: str  # Relativer Pfad ab figures_dir ({hash}/{filename})
     page: int | None = None
     caption: str | None = None
     fig_index: int = 0

@@ -34,6 +34,8 @@ class FakeHit:
         "page": 12,
         "doc_type": "anlagendoku",
         "breadcrumb": "Technische Daten > Nutzlast",
+        "figure_refs": [],
+        "figure_captions": [],
     })
 
 
