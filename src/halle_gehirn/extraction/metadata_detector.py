@@ -15,6 +15,7 @@ from pathlib import Path
 
 import structlog
 
+from halle_gehirn.extraction.titelblatt import nachname_slug, parse_titelblatt
 from halle_gehirn.extraction.title_extractor import extract_title
 
 logger = structlog.get_logger(__name__)
@@ -88,6 +89,11 @@ class MetadataSuggestion:
     anlage: list[str] = field(default_factory=list)
     projekt: list[str] = field(default_factory=list)
     ansprechperson: list[str] = field(default_factory=list)
+    # ── Titelblatt-Parser (WP4) ──
+    autor: list[str] = field(default_factory=list)  # Registry-Slugs
+    autor_vorschlag: str | None = None  # erkannter Name ohne Registry-Slug
+    ansprechperson_vorschlag: list[str] = field(default_factory=list)
+    studiengang: str | None = None  # informativ (kein Manifest-Feld)
 
 
 def detect_metadata(
@@ -106,11 +112,19 @@ def detect_metadata(
         MetadataSuggestion mit best-effort vorausgefuellten Feldern.
     """
     titel = extract_title(text, filename)
-    jahr = _detect_year(filename, text)
     doc_type, grad = _detect_doc_type_and_grad(filename, text)
     sorte = _SORTE_MAP.get(doc_type) if doc_type else None
     bereich = _BEREICH_MAP.get(doc_type, []) if doc_type else []
     facets = _detect_registry_facets(filename, text, choices)
+
+    # Titelblatt-Parser (WP4): Datum hat Vorrang vor der
+    # Erste-Jahreszahl-Heuristik; Personen gegen Registry matchen
+    titelblatt = parse_titelblatt(text)
+    jahr = titelblatt.jahr or _detect_year(filename, text)
+    autor_slugs, autor_vorschlag = _match_autor(titelblatt.autor, choices)
+    ansprechpersonen, ap_vorschlaege = _match_betreuer(
+        titelblatt.betreuer, facets.get("ansprechperson", []), choices,
+    )
 
     sug = MetadataSuggestion(
         titel=titel,
@@ -122,10 +136,54 @@ def detect_metadata(
         thema=facets.get("thema", []),
         anlage=facets.get("anlage", []),
         projekt=facets.get("projekt", []),
-        ansprechperson=facets.get("ansprechperson", []),
+        ansprechperson=ansprechpersonen,
+        autor=autor_slugs,
+        autor_vorschlag=autor_vorschlag,
+        ansprechperson_vorschlag=ap_vorschlaege,
+        studiengang=titelblatt.studiengang,
     )
     logger.info("metadata_detected", filename=filename, suggestion=sug)
     return sug
+
+
+def _match_autor(
+    autor_name: str | None,
+    choices: dict[str, dict[str, str]],
+) -> tuple[list[str], str | None]:
+    """Matched den Titelblatt-Autor gegen die autor-Registry.
+
+    Returns:
+        (Slug-Liste falls bekannt, sonst voller Name als Vorschlag).
+    """
+    if not autor_name:
+        return [], None
+    slug = nachname_slug(autor_name)
+    if slug and slug in choices.get("autor", {}):
+        return [slug], None
+    return [], autor_name
+
+
+def _match_betreuer(
+    betreuer_namen: list[str],
+    bereits_erkannt: list[str],
+    choices: dict[str, dict[str, str]],
+) -> tuple[list[str], list[str]]:
+    """Matched Betreuer/Gutachter gegen die ansprechperson-Registry.
+
+    Returns:
+        (Slugs inkl. Label-Matches, unbekannte Namen als Vorschlaege).
+    """
+    slugs = list(bereits_erkannt)
+    vorschlaege: list[str] = []
+    registry = choices.get("ansprechperson", {})
+    for name in betreuer_namen:
+        slug = nachname_slug(name)
+        if slug and slug in registry:
+            if slug not in slugs:
+                slugs.append(slug)
+        else:
+            vorschlaege.append(name)
+    return slugs, vorschlaege
 
 
 def extract_text_from_upload(file_data: bytes, filename: str) -> str:

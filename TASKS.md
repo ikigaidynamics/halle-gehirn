@@ -113,9 +113,26 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
       jahr, `ui/_filter_sidebar.py`) gehen als filters an die API ·
       Branding aus Config (BOT_NAME, PRIMARY_COLOR=#c41230 statt
       #000000-TODO). 8 neue Tests (test_api_contract.py).
-- [ ] Zwischenaudit-Arbeitspakete WP4/WP7: siehe
-      `docs/audit_2026-07_zwischenstand.md` (WP4 Titelblatt-Parser →
-      WP7 Ops).
+- [x] **WP4 — BTU-Titelblatt-Parser:** Neues Modul `extraction/titelblatt.py`
+      (Autor „vorgelegt/eingereicht von", Betreuer/Gutachter/Pruefer,
+      Studiengang, Abgabedatum→Jahr; `nachname_slug` fuer Registry-Match).
+      In `detect_metadata` integriert: Datum schlaegt Erste-Jahreszahl-
+      Heuristik, bekannte Personen → Slugs, unbekannte → Vorschlaege
+      (Human-in-the-Loop, kein Auto-Write); Ingest-UI zeigt die Vorschlaege.
+      Matrikelnummern bewusst NICHT extrahiert (DSGVO). 14 neue Tests
+      (3 Titelblatt-Varianten).
+- [x] **WP7 — Ops-Haertung:** Rate-Limiter-Eviction (verwaiste IP-Buckets,
+      Multi-Worker-Hinweis) · Session-Memory LRU (max 500, OrderedDict) ·
+      Admin-Key via `secrets.compare_digest` (konstantzeit) · manual_loader
+      Fail-forward auf WARNING sichtbar · tiktoken-Offline-Cache
+      (`scripts/cache_tiktoken.py` + conftest zeigt auf `.tiktoken_cache/`,
+      Mirror-Fallback fuer gesperrte Egress → CI/Offline-Collection laeuft).
+      7 neue Tests (test_ops_hardening.py).
+
+**Zwischenaudit vollstaendig abgearbeitet (WP1–WP7).** Offen bleiben nur
+4 vorbestehende Test-Failures (Docling-Tabellen + Reranker-Fallback,
+Umgebungs-Drift, unabhaengig vom Audit) und ein latenter mypy-Hinweis
+in `manual_loader._extract_single` (Extractor-Protocol ohne do_ocr).
 
 ## Phase 9 — Compliance & Security  (vorgezogen)
 - [ ] `governance/{audit,consent,erasure}.py`

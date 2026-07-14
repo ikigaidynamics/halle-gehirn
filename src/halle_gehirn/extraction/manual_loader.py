@@ -160,11 +160,16 @@ class ManualLoader:
             self._enrich_breadcrumb(doc, path)
             docs.append(doc)
 
-        logger.info(
+        # Gescheiterte Dokumente auf WARNING heben, damit stille
+        # Totalverluste nicht im INFO-Rauschen untergehen (fail-forward,
+        # aber sichtbar). Der Haupt-Ingest-Pfad (ingest.run_ingest)
+        # zaehlt Failures zusaetzlich in IngestStats.
+        log = logger.warning if errors else logger.info
+        log(
             "manual_load_all_done",
             loaded=len(docs),
             failed=len(errors),
-            errors=errors[:5] if errors else [],
+            errors=errors[:10] if errors else [],
         )
         return docs
 
