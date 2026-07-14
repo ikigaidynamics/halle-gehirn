@@ -281,6 +281,20 @@ def _render_sources(sources: list[dict[str, str]]) -> None:
                     f"{escaped}</div>",
                     unsafe_allow_html=True,
                 )
+
+            # Abbildungen anzeigen (falls vorhanden)
+            figure_refs: list[str] = src.get("figure_refs") or []  # type: ignore[assignment]
+            figure_captions: list[str] = src.get("figure_captions") or []  # type: ignore[assignment]
+            if figure_refs:
+                figures_dir = Path(get_settings().figures_dir)
+                for idx, ref in enumerate(figure_refs):
+                    img_path = figures_dir / ref
+                    cap = figure_captions[idx] if idx < len(figure_captions) else None
+                    if img_path.is_file():
+                        st.image(str(img_path), caption=cap, width=400)
+                    elif cap:
+                        st.caption(f"[Bild fehlt] {cap}")
+
             st.divider()
 
 

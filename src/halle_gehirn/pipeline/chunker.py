@@ -64,6 +64,8 @@ class Chunk:
     headings: list[str] = field(default_factory=list)
     is_table: bool = False
     context_prefix: str | None = None
+    figure_refs: list[str] = field(default_factory=list)
+    figure_captions: list[str] = field(default_factory=list)
 
 
 def count_tokens(text: str) -> int:

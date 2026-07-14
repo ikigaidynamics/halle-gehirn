@@ -473,6 +473,8 @@ def _build_sources(hits: list[Any]) -> list[dict[str, Any]]:
             "score": round(hit.rerank_score, 4),
             "doc_type": payload.get("doc_type") or "",
             "breadcrumb": payload.get("breadcrumb") or "",
+            "figure_refs": payload.get("figure_refs") or [],
+            "figure_captions": payload.get("figure_captions") or [],
         })
     return sources
 

@@ -26,6 +26,7 @@ from halle_gehirn.extraction.plaintext_extractor import PlaintextExtractor
 from halle_gehirn.pipeline.chunk_filter import filter_chunks
 from halle_gehirn.pipeline.chunker import Chunk, MarkdownChunker
 from halle_gehirn.pipeline.context_enricher import OllamaContextEnricher
+from halle_gehirn.pipeline.figure_linker import link_figures_to_chunks
 from halle_gehirn.vector_store.schema import (
     Bereich,
     ChunkPayload,
@@ -313,9 +314,14 @@ def build_chunk_payload(
         Vollstaendiges ChunkPayload.
     """
     source_type = Path(entry.datei).suffix.lstrip(".").lower()
+    # text_raw = reiner Chunk-Text (unveraendert)
+    # text = suchbarer Text: context_prefix + chunk.text + figure captions
     text_for_embedding = chunk.text
     if chunk.context_prefix:
         text_for_embedding = f"{chunk.context_prefix}\n\n{chunk.text}"
+    if chunk.figure_captions:
+        caption_block = "\n".join(chunk.figure_captions)
+        text_for_embedding = f"{text_for_embedding}\n\n{caption_block}"
     return ChunkPayload(
         text=text_for_embedding,
         text_raw=chunk.text,
@@ -345,6 +351,8 @@ def build_chunk_payload(
         projekt=entry.projekt,
         ansprechperson=entry.ansprechperson,
         autor=entry.autor,
+        figure_refs=chunk.figure_refs,
+        figure_captions=chunk.figure_captions,
         vertraulichkeit=Vertraulichkeit(entry.vertraulichkeit),
         status=Status(entry.status),
         grad=Grad(entry.grad) if entry.grad else None,
@@ -545,6 +553,7 @@ def _prepare_entry(
     )
     chunks: list[Chunk] = chunker.chunk(doc, doc_type=entry.doc_type)
     chunks = filter_chunks(chunks, doc_type=entry.doc_type, settings=settings)
+    link_figures_to_chunks(chunks, doc.figures)
     return _PreparedDoc(
         entry=entry,
         source_hash=source_hash,
