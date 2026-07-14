@@ -33,6 +33,12 @@ _TOC_HEADINGS: frozenset[str] = frozenset({
     "abkürzungsverzeichnis",
     "literaturverzeichnis",
     "quellenverzeichnis",
+    "symbolverzeichnis",
+    "formelverzeichnis",
+    "nomenklatur",
+    "glossar",
+    "danksagung",
+    "lebenslauf",
     "anhang",
     "table of contents",
     "list of figures",
@@ -95,6 +101,12 @@ _ABSTRACT_HEADINGS: frozenset[str] = frozenset({
 
 # Punktreihen: "Kapitelname ......... 12"
 _DOT_LEADER_RE = re.compile(r"\.{3,}\s*\d+")
+# Lange Fuellpunkt-Reihe (>=6 Punkte am Stueck). Faengt Verzeichnisse,
+# die Docling als TABELLE ausgibt ("| Abstract | ....... | II |") — dort
+# stehen Fuellpunkte und Seitenzahl in getrennten Zellen (durch |), und
+# roemische Seitenzahlen matchen kein \d, sodass _DOT_LEADER_RE versagt.
+# Fachtext enthaelt praktisch nie 6 Punkte am Stueck.
+_DOT_RUN_RE = re.compile(r"\.{6,}")
 
 # Nummeriertes Kapitel-Heading: "## 1 Einleitung", "### 2.1 Wartung", "# 1. Foo"
 _NUMBERED_HEADING_RE = re.compile(
@@ -372,13 +384,21 @@ def _is_source_code(text: str) -> bool:
 
 
 def _has_dot_leaders(text: str) -> bool:
-    """Erkennt TOC-artigen Inhalt mit Fuellpunkten.
+    """Erkennt TOC-/Verzeichnis-Inhalt mit Fuellpunkten.
 
-    Gibt True zurueck wenn >50% der nicht-leeren Zeilen das
-    Punktreihen-Pattern matchen (mindestens 3 Zeilen).
+    Gibt True zurueck, wenn >50% der nicht-leeren Zeilen eine Punktreihe
+    tragen (mindestens 3 Zeilen). Erkennt sowohl die klassische Form
+    ("Kapitel ..... 12") als auch die Tabellen-Form, in der Docling
+    Verzeichnisse ausgibt (lange Fuellpunkt-Reihe, Seitenzahl in eigener
+    Zelle / roemisch). So fallen Inhalts-, Abbildungs- und
+    Tabellenverzeichnisse auch dann, wenn sie als is_table-Chunk vom
+    positionalen Front-/Tail-Matter-Filter ausgenommen sind.
     """
     lines = [line for line in text.split("\n") if line.strip()]
     if len(lines) < 3:
         return False
-    dot_lines = sum(1 for line in lines if _DOT_LEADER_RE.search(line))
+    dot_lines = sum(
+        1 for line in lines
+        if _DOT_LEADER_RE.search(line) or _DOT_RUN_RE.search(line)
+    )
     return dot_lines / len(lines) > 0.5

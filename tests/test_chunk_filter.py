@@ -414,6 +414,70 @@ class TestPositionalExemptions:
         assert len(result) == 2  # Deckblatt weg, Kapitel bleiben
 
 
+class TestVerzeichnisTables:
+    """Verzeichnisse, die Docling als Tabelle ausgibt, muessen fallen.
+
+    Regression aus echten Daten (Wang-Masterarbeit): Inhalts-/Abbildungs-/
+    Tabellenverzeichnis werden von Docling als is_table-Chunk emittiert und
+    entgehen dem positionalen Front-Matter-Filter. Die Dot-Run-Heuristik
+    faengt sie ueber die Fuellpunkt-Reihen.
+    """
+
+    def test_inhaltsverzeichnis_table_dropped(self) -> None:
+        """Tabellen-TOC mit roemischen + arabischen Seitenzahlen faellt."""
+        toc = (
+            "| Abstract | ....................................... II |\n"
+            "| --- | --- |\n"
+            "| Abbildungsverzeichnis ......................... | V |\n"
+            "| Tabellenverzeichnis .......................... | VIII |\n"
+            "| 1. Einleitung ................................ 1 |\n"
+            "| 1.1 Vorstellung des Projektes ............... | 1 |\n"
+            "| 2 Theoretischer Hintergrund ................. | 3 |\n"
+        )
+        chunks = [_make_chunk(toc, is_table=True)]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert result == [], "Tabellen-Inhaltsverzeichnis nicht verworfen"
+
+    def test_abbildungsverzeichnis_table_dropped(self) -> None:
+        """Abbildungsverzeichnis (Tabellenform) faellt."""
+        figs = "\n".join(
+            f"| Abbildung {i}: Titel {i} "
+            f"{'.' * 40} | {i} |"
+            for i in range(1, 12)
+        )
+        chunks = [_make_chunk(f"| --- | --- |\n{figs}", is_table=True)]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert result == []
+
+    def test_real_data_table_survives(self) -> None:
+        """Echte Ergebnistabelle (Prosa-Zellen, keine Punktreihen) bleibt."""
+        real = (
+            "| Komponente | Beschreibung | Beispiel |\n"
+            "| --- | --- | --- |\n"
+            "| Measurement | Logische Gruppierung von Daten, aehnlich "
+            "einer Tabelle. | Wetter |\n"
+            "| Tag | Metadaten als Schluessel-Wert-Paare fuer Filterung. "
+            "| Lokation=Berlin |\n"
+            "| Field | Die eigentlichen Messdaten als Paare. "
+            "| temperature=22.1 |\n"
+        )
+        chunks = [_make_chunk(real, is_table=True)]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 1, "Echte Datentabelle faelschlich verworfen"
+
+    def test_nodeid_symbol_table_survives(self) -> None:
+        """Symbol-lastige NodeId-Tabelle (echte Daten) bleibt erhalten."""
+        nodeids = (
+            "| Messgroesse | NodeId |\n"
+            "| --- | --- |\n"
+            "| ActivePowerL1 | ns=2;s=|var|CECC-LK.PowerMeter.L1.value |\n"
+            "| CurrentL1 | ns=2;s=|var|CECC-LK.PowerMeter.CurrentL1.value |\n"
+        )
+        chunks = [_make_chunk(nodeids, is_table=True)]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 1
+
+
 class TestReindexing:
     """Tests fuer die Re-Indizierung nach Filterung."""
 
