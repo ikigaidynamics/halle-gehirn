@@ -6,6 +6,7 @@ Andere Collections in derselben Instanz werden NIEMALS angefasst.
 """
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -29,7 +30,6 @@ from qdrant_client.models import (
 )
 
 from halle_gehirn.config import Settings, get_settings
-from halle_gehirn.pipeline.ingest import deterministic_chunk_id
 from halle_gehirn.vector_store.schema import (
     ChunkPayload,
     create_collection_if_missing,
@@ -147,6 +147,21 @@ def upsert_chunks(
 
     logger.info("upsert_done", total=total, collection=s.qdrant_collection)
     return total
+
+
+def deterministic_chunk_id(source_hash: str, chunk_index: int) -> str:
+    """Erzeugt eine deterministische Chunk-ID.
+
+    Args:
+        source_hash: SHA256-Hash der Quelldatei.
+        chunk_index: Index des Chunks im Dokument.
+
+    Returns:
+        Hex-String der deterministischen ID.
+    """
+    return hashlib.sha256(
+        f"{source_hash}:{chunk_index}".encode()
+    ).hexdigest()[:32]
 
 
 def _build_points(
