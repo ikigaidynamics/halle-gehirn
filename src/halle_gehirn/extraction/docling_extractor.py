@@ -166,18 +166,17 @@ class DoclingExtractor:
             do_ocr=ocr_flag,
         )
 
-        with httpx.Client(timeout=httpx.Timeout(600.0)) as client:
-            with path.open("rb") as f:
-                resp = client.post(
-                    f"{base_url}/v1/convert/file",
-                    files=[("files", (path.name, f, "application/octet-stream"))],
-                    data={
-                        "to_formats": ["md", "json"],
-                        "do_ocr": str(ocr_flag).lower(),
-                        "table_mode": self._settings.docling_table_mode,
-                        "image_export_mode": "placeholder",
-                    },
-                )
+        with httpx.Client(timeout=httpx.Timeout(600.0)) as client, path.open("rb") as f:
+            resp = client.post(
+                f"{base_url}/v1/convert/file",
+                files=[("files", (path.name, f, "application/octet-stream"))],
+                data={
+                    "to_formats": ["md", "json"],
+                    "do_ocr": str(ocr_flag).lower(),
+                    "table_mode": self._settings.docling_table_mode,
+                    "image_export_mode": "placeholder",
+                },
+            )
         resp.raise_for_status()
         payload = resp.json()
 

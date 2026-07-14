@@ -129,6 +129,16 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
       Mirror-Fallback fuer gesperrte Egress → CI/Offline-Collection laeuft).
       7 neue Tests (test_ops_hardening.py).
 
+- [x] **WP8 — Remote Docling Serve** (feature/docling-serve, gemergt):
+      `DoclingExtractor` spricht optional einen docling-serve-HTTP-Endpoint
+      an (`DOCLING_SERVE_URL`, POST /v1/convert/file, to_formats md+json).
+      `_build_result_from_remote` baut ExtractedDoc aus `json_content` —
+      inkl. WP3-Page-Map (aus texts-Provenienz), Tabellen (grid→Markdown,
+      Caption via $ref) und Boilerplate-Cleaning. Fallback auf lokalen
+      Docling bei ConnectError/Timeout; status=failure → ExtractionError.
+      `deterministic_chunk_id` nach qdrant_client verschoben (Re-Export in
+      ingest, kein Zirkelimport). 4 neue Tests (gemocktes HTTP).
+
 **Zwischenaudit vollstaendig abgearbeitet (WP1–WP7).** Offen bleiben nur
 4 vorbestehende Test-Failures (Docling-Tabellen + Reranker-Fallback,
 Umgebungs-Drift, unabhaengig vom Audit) und ein latenter mypy-Hinweis
