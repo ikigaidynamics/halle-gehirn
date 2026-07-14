@@ -5,6 +5,7 @@ Ohne Key -> 401 Unauthorized.
 """
 from __future__ import annotations
 
+import secrets
 from typing import Annotated
 
 import structlog
@@ -34,7 +35,10 @@ async def verify_api_key(
         HTTPException: 401 wenn Key fehlt oder ungueltig.
     """
     settings = get_settings()
-    if not x_api_key or x_api_key != settings.admin_api_key:
+    # compare_digest: konstantzeit — kein Timing-Seitenkanal auf den Key
+    if not x_api_key or not secrets.compare_digest(
+        x_api_key, settings.admin_api_key,
+    ):
         raise HTTPException(status_code=401, detail="Ungueltiger API-Key")
     return x_api_key
 

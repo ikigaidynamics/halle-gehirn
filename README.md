@@ -32,6 +32,11 @@ uv run mypy src
 uv run pytest
 ```
 
+> **Offline/CI-Hinweis:** Der Chunker lädt beim Import das tiktoken-Encoding
+> `cl100k_base` (einmaliger Netz-Download). In Umgebungen ohne Egress vorher
+> `python scripts/cache_tiktoken.py` ausführen — legt die Datei unter
+> `.tiktoken_cache/` ab, `conftest.py` nutzt sie dann automatisch.
+
 ## Daten hinzufügen
 
 1. Quelldokumente nach `data/manual/<sorte>/` legen (abschlussarbeiten, projektberichte, transfer,

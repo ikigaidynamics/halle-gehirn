@@ -51,17 +51,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("shutdown")
 
 
+# Abstand zwischen zwei Aufraeum-Laeufen des Rate-Limiters
+_RATE_SWEEP_INTERVAL = 300.0
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """In-Memory Sliding-Window Rate-Limiter per IP.
 
     Zaehlt Anfragen pro IP in einem 60-Sekunden-Fenster.
     Bei Ueberschreitung: 429 Too Many Requests.
+
+    Grenze: In-Memory und PRO PROZESS — bei mehreren Uvicorn-Workern
+    gilt das Limit je Worker. Fuer echte Mehrinstanz-Deployments einen
+    geteilten Store (z.B. Redis) verwenden.
     """
 
     def __init__(self, app: Any, rpm: int = 60) -> None:
         super().__init__(app)
         self._rpm = rpm
         self._requests: dict[str, list[float]] = defaultdict(list)
+        self._last_sweep = time.monotonic()
 
     async def dispatch(
         self, request: Request, call_next: Any,
@@ -69,6 +78,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """Prueft Rate-Limit vor Request-Verarbeitung."""
         client_ip = request.client.host if request.client else "unknown"
         now = time.monotonic()
+
+        # Verwaiste IP-Buckets regelmaessig raeumen (sonst waechst
+        # das Dict mit jeder je gesehenen IP unbegrenzt)
+        if now - self._last_sweep > _RATE_SWEEP_INTERVAL:
+            self._sweep(now)
 
         # Alte Eintraege bereinigen
         timestamps = self._requests[client_ip]
@@ -84,7 +98,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         self._requests[client_ip].append(now)
-        return await call_next(request)
+        response: Response = await call_next(request)
+        return response
+
+    def _sweep(self, now: float) -> None:
+        """Entfernt IP-Buckets ohne Anfragen im aktuellen Fenster."""
+        self._last_sweep = now
+        stale = [
+            ip for ip, ts_list in self._requests.items()
+            if not ts_list or ts_list[-1] <= now - 60.0
+        ]
+        for ip in stale:
+            del self._requests[ip]
+        if stale:
+            logger.debug("rate_limiter_swept", removed=len(stale))
 
 
 def create_app() -> FastAPI:

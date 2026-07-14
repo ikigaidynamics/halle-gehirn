@@ -278,12 +278,28 @@ def _render_neu_tab() -> None:
             ],
             key=f"ansprechperson_{v}",
         )
+        if sug and sug.ansprechperson_vorschlag:
+            st.caption(
+                "💡 Titelblatt: Betreuer/Gutachter "
+                + ", ".join(f"„{n}“" for n in sug.ansprechperson_vorschlag)
+                + " — ggf. im Vokabular anlegen"
+            )
         au_opts = sorted(choices.get("autor", {}))
         autor = st.multiselect(
             "Autor", options=au_opts,
             format_func=lambda s: f"{s} — {choices['autor'][s]}",
+            default=[
+                a for a in (sug.autor if sug else []) if a in au_opts
+            ],
             key=f"autor_{v}",
         )
+        if sug and sug.autor_vorschlag:
+            st.caption(
+                f"💡 Titelblatt: Autor „{sug.autor_vorschlag}“ — "
+                "ggf. im Vokabular anlegen"
+            )
+        if sug and sug.studiengang:
+            st.caption(f"Studiengang laut Titelblatt: {sug.studiengang}")
 
     # ── Neuen Facetten-Wert anlegen ──
     with st.expander("Neuen Facetten-Wert anlegen"):

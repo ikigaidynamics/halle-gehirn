@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -75,17 +76,28 @@ class QueryOrchestrator:
         pipeline: Die gebaute QueryPipeline.
     """
 
+    # Obergrenze gehaltener Session-Memories (LRU-Eviction)
+    _MAX_SESSIONS = 500
+
     def __init__(self, pipeline: QueryPipeline) -> None:
         self._pipeline = pipeline
-        self._sessions: dict[str, ConversationMemory] = {}
+        self._sessions: OrderedDict[str, ConversationMemory] = OrderedDict()
 
     def _get_memory(self, session_id: str) -> ConversationMemory:
-        """Liefert oder erstellt ConversationMemory fuer eine Session."""
-        if session_id not in self._sessions:
-            self._sessions[session_id] = ConversationMemory(
-                settings=self._pipeline.settings,
-            )
-        return self._sessions[session_id]
+        """Liefert oder erstellt ConversationMemory fuer eine Session.
+
+        LRU-Eviction: haelt maximal _MAX_SESSIONS Memories — sonst
+        waechst das Dict mit jeder je gesehenen Session-ID unbegrenzt.
+        """
+        if session_id in self._sessions:
+            self._sessions.move_to_end(session_id)
+            return self._sessions[session_id]
+        if len(self._sessions) >= self._MAX_SESSIONS:
+            evicted, _ = self._sessions.popitem(last=False)
+            logger.info("session_memory_evicted", session_id=evicted)
+        memory = ConversationMemory(settings=self._pipeline.settings)
+        self._sessions[session_id] = memory
+        return memory
 
     async def run(
         self,
