@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import httpx
 import structlog
 from docling.datamodel.base_models import ConversionStatus, InputFormat
 from docling.datamodel.pipeline_options import (
@@ -102,6 +103,17 @@ class DoclingExtractor:
             size_bytes=path.stat().st_size,
         )
 
+        if self._settings.docling_serve_url:
+            try:
+                return self._convert_remote(path, do_ocr=do_ocr)
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                logger.warning(
+                    "docling_serve_unreachable_fallback_local",
+                    url=self._settings.docling_serve_url,
+                    error=str(exc),
+                )
+                # Fall through to local Docling pipeline
+
         try:
             docling_doc = self._convert(path, do_ocr=do_ocr)
             return self._build_result(docling_doc, path)
@@ -123,6 +135,149 @@ class DoclingExtractor:
                 )
                 return self._pymupdf_fallback(path)
             raise
+
+    def _convert_remote(
+        self,
+        path: Path,
+        *,
+        do_ocr: bool | None = None,
+    ) -> ExtractedDoc:
+        """Sendet die Datei an Docling Serve und baut ein ExtractedDoc.
+
+        Args:
+            path: Aufgeloester Dateipfad.
+            do_ocr: OCR-Override (None = Config-Default).
+
+        Returns:
+            Strukturiertes ExtractedDoc.
+
+        Raises:
+            ExtractionError: Server antwortet mit Fehler.
+            httpx.ConnectError: Server nicht erreichbar (Caller faengt ab).
+            httpx.TimeoutException: Timeout (Caller faengt ab).
+        """
+        base_url = self._settings.docling_serve_url.rstrip("/")
+        ocr_flag = do_ocr if do_ocr is not None else self._settings.docling_ocr
+
+        logger.info(
+            "docling_serve_request",
+            url=base_url,
+            path=str(path),
+            do_ocr=ocr_flag,
+        )
+
+        with httpx.Client(timeout=httpx.Timeout(600.0)) as client:
+            with path.open("rb") as f:
+                resp = client.post(
+                    f"{base_url}/v1/convert/file",
+                    files=[("files", (path.name, f, "application/octet-stream"))],
+                    data={
+                        "to_formats": ["md", "json"],
+                        "do_ocr": str(ocr_flag).lower(),
+                        "table_mode": self._settings.docling_table_mode,
+                        "image_export_mode": "placeholder",
+                    },
+                )
+        resp.raise_for_status()
+        payload = resp.json()
+
+        status = payload.get("status", "")
+        errors = payload.get("errors", [])
+        if status == "failure":
+            raise ExtractionError(
+                f"Docling Serve meldet FAILURE fuer {path.name}: {errors}"
+            )
+
+        logger.info(
+            "docling_serve_response",
+            status=status,
+            errors=len(errors),
+            processing_time=payload.get("processing_time"),
+        )
+
+        return self._build_result_from_remote(payload, path)
+
+    def _build_result_from_remote(
+        self,
+        payload: dict[str, Any],
+        path: Path,
+    ) -> ExtractedDoc:
+        """Baut ein ExtractedDoc aus der Docling-Serve-Response.
+
+        Args:
+            payload: JSON-Response von ``/v1/convert/file``.
+            path: Original-Dateipfad.
+
+        Returns:
+            Fertiges ExtractedDoc.
+        """
+        doc = payload.get("document", {})
+        body_md: str = doc.get("md_content") or ""
+        jc: dict[str, Any] = doc.get("json_content") or {}
+
+        if self._settings.boilerplate_clean:
+            body_md = clean_boilerplate(body_md)
+
+        # -- Tabellen aus json_content --
+        tables: list[TableBlock] = []
+        for tbl in jc.get("tables", []):
+            grid = (tbl.get("data") or {}).get("grid", [])
+            md = _grid_to_markdown(grid) if grid else ""
+            if not md:
+                continue
+            prov = tbl.get("prov", [])
+            page_no = prov[0]["page_no"] if prov else None
+            captions = tbl.get("captions", [])
+            caption_str: str | None = None
+            if captions:
+                ref = captions[0].get("$ref", "")
+                caption_str = _resolve_ref_text(jc, ref)
+            tables.append(
+                TableBlock(markdown=md, page=page_no, caption=caption_str)
+            )
+
+        # -- Page-Map aus json_content texts --
+        page_elements: list[tuple[str, int | None]] = []
+        for txt in jc.get("texts", []):
+            text = txt.get("text", "")
+            if not text.strip():
+                continue
+            prov = txt.get("prov", [])
+            pg = prov[0]["page_no"] if prov else None
+            page_elements.append((text, pg))
+        page_map = build_page_map(body_md, page_elements)
+
+        # -- Metadaten --
+        pages_dict = jc.get("pages", {})
+        page_count = len(pages_dict) if pages_dict else None
+        title = jc.get("name") or path.stem
+        source_type = path.suffix.lstrip(".").lower()
+
+        extracted = ExtractedDoc(
+            source=str(path),
+            source_type=source_type,
+            title=str(title).strip(),
+            body_md=body_md,
+            tables=tables,
+            figures=[],  # Bilder bleiben auf dem Server; spaeter erweiterbar
+            page_count=page_count,
+            language="de",
+            meta={
+                **_build_meta(path),
+                "extraction_backend": "docling_serve",
+                "docling_serve_url": self._settings.docling_serve_url,
+            },
+            page_map=page_map,
+        )
+        logger.info(
+            "docling_serve_extraction_done",
+            path=str(path),
+            pages=page_count,
+            tables=len(tables),
+            md_chars=len(body_md),
+            page_map_entries=len(page_map),
+        )
+        return extracted
 
     def _convert(
         self,
@@ -467,16 +622,27 @@ def _table_to_markdown(table: Any, docling_doc: Any) -> str:
     return ""
 
 
+def _cell_text(cell: Any) -> str:
+    """Extrahiert den Textinhalt einer Tabellenzelle.
+
+    Unterstuetzt sowohl Docling-Objekte (lokale Lib) als auch
+    dicts aus der JSON-API-Response.
+    """
+    if isinstance(cell, dict):
+        return str(cell.get("text", ""))
+    return str(cell)
+
+
 def _grid_to_markdown(grid: list[list[Any]]) -> str:
     """Konvertiert ein Docling-Tabellen-Grid zu Markdown-Tabelle."""
     if not grid:
         return ""
     lines: list[str] = []
-    header = [str(c) for c in grid[0]]
+    header = [_cell_text(c) for c in grid[0]]
     lines.append("| " + " | ".join(header) + " |")
     lines.append("| " + " | ".join("---" for _ in header) + " |")
     for row in grid[1:]:
-        cells = [str(c) for c in row]
+        cells = [_cell_text(c) for c in row]
         lines.append("| " + " | ".join(cells) + " |")
     return chr(10).join(lines)
 
@@ -587,6 +753,33 @@ def _extract_figures(
         directory=str(fig_dir),
     )
     return figures
+
+
+def _resolve_ref_text(jc: dict[str, Any], ref: str) -> str | None:
+    """Loest eine ``$ref`` (z.B. ``#/texts/3``) im json_content auf.
+
+    Args:
+        jc: Das json_content-Dict aus der Docling-Serve-Response.
+        ref: JSON-Pointer-Referenz (z.B. ``#/texts/3``).
+
+    Returns:
+        Den ``text``-Wert des referenzierten Objekts oder None.
+    """
+    if not ref.startswith("#/"):
+        return None
+    parts = ref.lstrip("#/").split("/")
+    if len(parts) != 2:
+        return None
+    collection, idx_str = parts
+    try:
+        idx = int(idx_str)
+    except ValueError:
+        return None
+    items = jc.get(collection, [])
+    if not isinstance(items, list) or idx >= len(items):
+        return None
+    text = items[idx].get("text", "")
+    return text.strip() if text else None
 
 
 def _build_meta(path: Path) -> dict[str, str]:

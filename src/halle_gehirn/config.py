@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     context_concurrency: int = 4
 
     # ── Extraction (Docling) ──
+    docling_serve_url: str = ""  # leer = lokale Lib; z.B. http://141.43.76.21:5001
     docling_ocr: bool = True
     docling_table_mode: Literal["fast", "accurate"] = "accurate"
     docling_do_figures: bool = True
