@@ -10,7 +10,7 @@ Orchestriert den vollstaendigen Retrieval-Pfad:
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -23,6 +23,9 @@ from halle_gehirn.vector_store.qdrant_client import (
     RetrievalHit,
     hybrid_query,
 )
+
+if TYPE_CHECKING:
+    from halle_gehirn.observability.retrieval_logger import PipelineTimer
 
 logger = structlog.get_logger(__name__)
 
@@ -65,12 +68,14 @@ class HybridRetriever:
         self,
         query: str,
         filters: dict[str, Any] | None = None,
+        timer: PipelineTimer | None = None,
     ) -> list[RetrievalHit]:
         """Fuehrt den vollstaendigen Retrieval-Pfad aus.
 
         Args:
             query: Die Benutzeranfrage.
             filters: Optionale Payload-Filter (key -> value/list).
+            timer: Optionaler PipelineTimer fuer Latenz-Messung.
 
         Returns:
             Top-K RetrievalHit-Objekte mit rerank_score.
@@ -80,18 +85,26 @@ class HybridRetriever:
         logger.info("retrieval_start", query_type=query_type)
 
         # 2. Embed Query (dense + sparse)
+        if timer:
+            timer.start("embed")
         dense_vecs = await self._dense.embed([query])
         query_dense = dense_vecs[0]
         sparse_vecs = self._sparse.embed([query])
         query_sparse = sparse_vecs[0]
+        if timer:
+            timer.stop("embed")
 
         # 3. Hybrid Query (Qdrant: prefetch → RRF)
+        if timer:
+            timer.start("search")
         hits = hybrid_query(
             query_dense=query_dense,
             query_sparse=query_sparse,
             limit=self._settings.top_k_initial,
             filters=filters,
         )
+        if timer:
+            timer.stop("search")
         logger.info(
             "hybrid_query_result",
             hits=len(hits),
@@ -110,7 +123,11 @@ class HybridRetriever:
             )
 
         # 5. Reranking
+        if timer:
+            timer.start("rerank")
         hits = await self._reranker.rerank(query, hits)
+        if timer:
+            timer.stop("rerank")
 
         # 6. Top-K Final
         final = hits[: self._settings.top_k_final]

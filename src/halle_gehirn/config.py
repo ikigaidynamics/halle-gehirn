@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     reranker: Literal["logprobs", "cross_encoder", "cohere"] = "logprobs"
     rerank_num_predict: int = 8  # Ja/Nein braucht nur 1 Token
     rerank_top_logprobs: int = 5
+    use_query_rewrite: bool = True
     use_query_transform: bool = False
     use_router: bool = True
 
@@ -88,6 +89,8 @@ class Settings(BaseSettings):
     # ── Observability ──
     log_level: str = "INFO"
     otel_enabled: bool = True
+    retrieval_log_enabled: bool = True
+    retrieval_log_dir: str = "logs/retrieval"
 
     # ── Crawler (sekundär) ──
     crawler_domains: str = "b-tu.de"
