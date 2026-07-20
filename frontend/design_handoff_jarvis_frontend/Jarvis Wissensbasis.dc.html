@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #ecebe8; font-family: "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #E2001A; text-decoration: none; }
+  a:hover { color: #b30015; }
+  @keyframes blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+  @keyframes tpulse { 0%,100% { transform: scale(1); opacity: .35; } 30% { transform: scale(1.25); opacity: .9; } }
+  .jv-scroll::-webkit-scrollbar { width: 7px; }
+  .jv-scroll::-webkit-scrollbar-thumb { background: #d0cfca; border-radius: 4px; }
+  .jv-scroll::-webkit-scrollbar-track { background: transparent; }
+</style>
+</helmet>
+<div style="min-height:100vh;padding:56px 48px 80px;background:radial-gradient(ellipse 70% 45% at 50% 0%, rgba(226,0,26,0.06) 0%, transparent 60%), #ecebe8;">
+
+  <div style="max-width:1360px;margin:0 auto 26px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:9px;height:9px;border-radius:50%;background:#E2001A;box-shadow:0 0 12px rgba(226,0,26,0.4);"></div>
+      <span style="font:600 12px/1 'JetBrains Mono',monospace;letter-spacing:0.2em;text-transform:uppercase;color:#8a877f;">Jarvis · Halle-Gehirn — Wissensbasis der Modellfabrik</span>
+    </div>
+    <p style="margin:12px 0 0;max-width:760px;font-size:14px;line-height:1.6;color:#6b6963;">Beleg-Inspektor-Layout im hellen Branding des Mittelstand-Digital Zentrums Spreeland. Quellenbelegtes RAG mit Confidence-Ampel, On-Prem-Vertrauen und vollständig angezeigten Chunk-Belegen im rechten Panel.</p>
+  </div>
+
+  <div style="width:1360px;height:868px;margin:0 auto;display:flex;flex-direction:column;border-radius:16px;overflow:hidden;border:1px solid rgba(0,0,0,0.1);background:#ffffff;box-shadow:0 40px 110px -35px rgba(30,20,20,0.4);">
+
+    <!-- TOPBAR -->
+    <div style="display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 22px;background:#ffffff;border-bottom:1px solid rgba(0,0,0,0.08);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <img src="uploads/MDZ_Icon.jpg" alt="MDZ" style="width:34px;height:34px;border-radius:9px;object-fit:cover;"/>
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-size:16px;font-weight:700;color:#1a1a1a;letter-spacing:-0.01em;">Jarvis</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:8px;background:rgba(47,158,68,0.08);border:1px solid rgba(47,158,68,0.28);">
+          <span style="width:7px;height:7px;border-radius:50%;background:#2f9e44;box-shadow:0 0 8px rgba(47,158,68,0.5);"></span>
+          <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#2f9e44;">On-Prem · qwen3:8b</span>
+        </div>
+        <span style="padding:7px 10px;border-radius:8px;background:#f5f4f1;border:1px solid rgba(0,0,0,0.08);font-size:11px;font-weight:600;color:#555;">DSGVO</span>
+        <span style="padding:7px 10px;border-radius:8px;background:#f5f4f1;border:1px solid rgba(0,0,0,0.08);font-size:11px;font-weight:600;color:#555;">EU&nbsp;AI&nbsp;Act</span>
+        <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:#f0eeea;border:1px solid rgba(0,0,0,0.08);font-size:12px;font-weight:700;color:#555;">RJ</div>
+      </div>
+    </div>
+
+    <!-- BODY 3-col -->
+    <div style="flex:1;display:flex;min-height:0;">
+
+      <!-- slim rail -->
+      <div style="width:66px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 0;background:#faf9f6;border-right:1px solid rgba(0,0,0,0.07);">
+        <div style="width:42px;height:42px;border-radius:12px;background:#E2001A;display:flex;align-items:center;justify-content:center;font-size:21px;color:#fff;box-shadow:0 6px 16px -6px rgba(226,0,26,0.6);cursor:pointer;">+</div>
+        <div style="height:8px;"></div>
+        <div style="width:42px;height:42px;border-radius:12px;background:rgba(226,0,26,0.1);border:1px solid rgba(226,0,26,0.25);display:flex;align-items:center;justify-content:center;color:#E2001A;cursor:pointer;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
+        <div style="width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#a09d95;cursor:pointer;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+        <div style="width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#a09d95;cursor:pointer;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+        <div style="margin-top:auto;width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#a09d95;cursor:pointer;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+      </div>
+
+      <!-- center conversation -->
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#f7f6f3;">
+        <div class="jv-scroll" style="flex:1;overflow-y:auto;padding:30px 26px 8px;">
+          <div style="max-width:660px;margin:0 auto;display:flex;flex-direction:column;gap:22px;">
+
+            <!-- user -->
+            <div style="display:flex;flex-direction:row-reverse;gap:12px;">
+              <div style="width:30px;height:30px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f0eeea;border:1px solid rgba(0,0,0,0.08);font-size:10px;font-weight:700;color:#555;">RJ</div>
+              <div style="padding:11px 15px;border-radius:15px;border-top-right-radius:5px;background:rgba(226,0,26,0.08);border:1px solid rgba(226,0,26,0.2);font-size:14px;line-height:1.6;color:#222;">Welche Sensoren eignen sich für Predictive Maintenance an der Werkzeugmaschine?</div>
+            </div>
+
+            <!-- assistant -->
+            <div style="display:flex;gap:12px;">
+              <img src="uploads/MDZ_Icon.jpg" alt="Jarvis" style="width:30px;height:30px;border-radius:9px;flex-shrink:0;object-fit:cover;box-shadow:0 0 0 1px rgba(226,0,26,0.25);"/>
+              <div style="min-width:0;">
+                <div style="display:flex;align-items:center;gap:7px;padding:5px 11px;border-radius:8px;background:rgba(47,158,68,0.09);border:1px solid rgba(47,158,68,0.28);width:fit-content;margin-bottom:9px;">
+                  <span style="display:flex;gap:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#2f9e44;box-shadow:0 0 6px rgba(47,158,68,0.5);"></span><span style="width:7px;height:7px;border-radius:50%;background:rgba(227,160,8,0.28);"></span><span style="width:7px;height:7px;border-radius:50%;background:rgba(240,96,58,0.28);"></span></span>
+                  <span style="font-size:11.5px;font-weight:600;color:#2f9e44;">Hohe Konfidenz · 0.82</span>
+                </div>
+                <div style="padding:15px 17px;border-radius:14px;border-top-left-radius:5px;border:1px solid rgba(0,0,0,0.08);background:#ffffff;font-size:14px;line-height:1.72;color:#333;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+                  Am besten geeignet sind <strong style="color:#111;font-weight:600;">MEMS-Beschleunigungssensoren</strong>; sie lieferten in der vergleichenden Evaluierung die höchste Trennschärfe bei der Zustandsklassifikation der Werkzeuge.<button style="border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;margin:0 2px;border-radius:50%;background:#E2001A;color:#fff;font:600 10px/1 'JetBrains Mono',monospace;vertical-align:top;">1</button> Für die Anbindung an die Demonstrator-Zelle empfiehlt die Anlagendokumentation IIoT-Gateways.<button style="border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;margin:0 2px;border-radius:50%;background:rgba(226,0,26,0.14);color:#E2001A;font:600 10px/1 'JetBrains Mono',monospace;vertical-align:top;">2</button>
+                  <div style="margin-top:12px;display:flex;align-items:center;gap:8px;padding-top:11px;border-top:1px solid rgba(0,0,0,0.07);">
+                    <span style="font:500 10px/1 'JetBrains Mono',monospace;color:#9a978f;">2 Belege</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- user 2 -->
+            <div style="display:flex;flex-direction:row-reverse;gap:12px;">
+              <div style="width:30px;height:30px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f0eeea;border:1px solid rgba(0,0,0,0.08);font-size:10px;font-weight:700;color:#555;">RJ</div>
+              <div style="padding:11px 15px;border-radius:15px;border-top-right-radius:5px;background:rgba(226,0,26,0.08);border:1px solid rgba(226,0,26,0.2);font-size:14px;line-height:1.6;color:#222;">Gibt es dazu eine Abschlussarbeit am Lehrstuhl?</div>
+            </div>
+
+            <!-- assistant 2 -->
+            <div style="display:flex;gap:12px;">
+              <img src="uploads/MDZ_Icon.jpg" alt="Jarvis" style="width:30px;height:30px;border-radius:9px;flex-shrink:0;object-fit:cover;box-shadow:0 0 0 1px rgba(226,0,26,0.25);"/>
+              <div style="min-width:0;">
+                <div style="padding:15px 17px;border-radius:14px;border-top-left-radius:5px;border:1px solid rgba(0,0,0,0.08);background:#ffffff;font-size:14px;line-height:1.72;color:#333;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+                  Ja — die Masterarbeit von K. Abdalla (2025, betreut von Prof. Berger &amp; M. Lautsch) behandelt genau diese Sensorevaluierung.<button style="border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;margin:0 2px;border-radius:50%;background:#E2001A;color:#fff;font:600 10px/1 'JetBrains Mono',monospace;vertical-align:top;">1</button><span style="display:inline-block;width:2px;height:15px;background:#E2001A;vertical-align:-2px;margin-left:2px;animation:blink 1s step-end infinite;"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- composer -->
+        <div style="padding:14px 26px 18px;border-top:1px solid rgba(0,0,0,0.07);background:#f7f6f3;">
+          <div style="max-width:660px;margin:0 auto;">
+            <div style="display:flex;align-items:center;gap:10px;border-radius:15px;border:1px solid rgba(0,0,0,0.12);background:#ffffff;padding:10px 12px;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+              <span style="width:30px;height:30px;border-radius:8px;background:#f0eeea;display:flex;align-items:center;justify-content:center;font-size:15px;color:#8a877f;flex-shrink:0;">＋</span>
+              <span style="flex:1;font-size:14px;color:#9a978f;">Folgefrage stellen…</span>
+              <button style="width:36px;height:36px;border:none;border-radius:10px;background:#E2001A;color:#fff;font-size:15px;cursor:pointer;flex-shrink:0;box-shadow:0 6px 18px -6px rgba(226,0,26,0.6);">↑</button>
+            </div>
+            <p style="margin:9px 0 0;text-align:center;font:500 10.5px/1.4 'JetBrains Mono',monospace;color:#a09d95;">Multi-Turn-Kontext (Fenster 5) · quellenbelegt · On-Prem · keine Cloud</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT INSPECTOR -->
+      <div class="jv-scroll" style="width:400px;flex-shrink:0;display:flex;flex-direction:column;background:#ffffff;border-left:1px solid rgba(0,0,0,0.08);overflow-y:auto;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid rgba(0,0,0,0.07);position:sticky;top:0;background:#ffffff;z-index:2;">
+          <span style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#9a978f;">Beleg-Inspektor</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#333;"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#E2001A;color:#fff;font:600 10px/1 'JetBrains Mono',monospace;">1</span>ausgewählt</span>
+        </div>
+
+        <div style="padding:18px;">
+          <!-- doc card -->
+          <div style="display:flex;gap:12px;">
+            <div style="width:40px;height:40px;flex-shrink:0;border-radius:10px;background:rgba(226,0,26,0.1);display:flex;align-items:center;justify-content:center;color:#E2001A;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+            <div>
+              <div style="font-size:14px;font-weight:600;color:#161616;line-height:1.4;">Evaluierung verschiedener Beschleunigungssensoren zur Zustandsklassifikation von Werkzeugen</div>
+              <div style="font:500 10px/1.4 'JetBrains Mono',monospace;color:#a09d95;margin-top:6px;">manual/abschlussarbeiten/ · Khaled Abdalla</div>
+            </div>
+          </div>
+
+          <!-- metadata table -->
+          <div style="margin-top:18px;border-radius:12px;border:1px solid rgba(0,0,0,0.08);background:#faf9f6;overflow:hidden;">
+            <div style="font:600 9px/1 'JetBrains Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#a09d95;padding:11px 13px 8px;">Facetten · Metadaten</div>
+            <div style="display:grid;grid-template-columns:132px 1fr;">
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Dokumententyp</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#2a2a2a;border-top:1px solid rgba(0,0,0,0.06);">Abschlussarbeit</div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Grad</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#2a2a2a;border-top:1px solid rgba(0,0,0,0.06);">Master</div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Bereich</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#E2001A;border-top:1px solid rgba(0,0,0,0.06);">Forschung, Infrastruktur, Transfer</div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Anlage</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#E2001A;border-top:1px solid rgba(0,0,0,0.06);">Predictive Maintenance</div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Thema</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#2a2a2a;border-top:1px solid rgba(0,0,0,0.06);">Mensch-Maschine-Interaktion</div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Ansprechperson</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#2a2a2a;border-top:1px solid rgba(0,0,0,0.06);">Prof. Berger, M. Lautsch</div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Jahr</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#2a2a2a;border-top:1px solid rgba(0,0,0,0.06);">2025</div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Herkunft</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#2a2a2a;border-top:1px solid rgba(0,0,0,0.06);">Lehrstuhl Automatisierungstechnik</div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Quelltyp</div><div style="padding:8px 13px;border-top:1px solid rgba(0,0,0,0.06);"><span style="padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:600;background:rgba(47,158,68,0.12);color:#2f9e44;">Primärquelle</span></div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Vertraulichkeit</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#2a2a2a;border-top:1px solid rgba(0,0,0,0.06);">Offen</div>
+              <div style="padding:8px 13px;font-size:11.5px;font-weight:500;color:#8a877f;border-top:1px solid rgba(0,0,0,0.06);">Status</div><div style="padding:8px 13px;font-size:11.5px;font-weight:600;color:#2a2a2a;border-top:1px solid rgba(0,0,0,0.06);">Final</div>
+            </div>
+          </div>
+
+          <!-- FULL chunk -->
+          <div style="margin-top:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font:600 9px/1 'JetBrains Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#a09d95;">Chunk · vollständig</span>
+              <span style="font:500 9px/1 'JetBrains Mono',monospace;color:#b8b5ad;">S. 47 · char 12480–13120 · #chunk 38</span>
+            </div>
+            <div style="padding:14px 15px;border-radius:11px;background:rgba(226,0,26,0.04);border:1px solid rgba(226,0,26,0.15);border-left:3px solid #E2001A;">
+              <p style="margin:0;font-size:12.5px;line-height:1.7;color:#3a3a3a;">Die vergleichende Untersuchung umfasste vier Sensorprinzipien – piezoelektrische, kapazitive, MEMS-basierte und magnetostriktive Aufnehmer. Über einen Messzeitraum von zwölf Wochen wurden an der Werkzeugmaschine Schwingungsdaten im Frequenzbereich von 0,5 bis 10&nbsp;kHz erfasst und mit einem Random-Forest-Klassifikator ausgewertet. Die MEMS-basierten Aufnehmer erreichten dabei eine Klassifikationsgenauigkeit von 94,2&nbsp;% bei der Unterscheidung der vier Verschleißklassen (leicht, mittel, stark, defekt), während kapazitive Sensoren bei höheren Frequenzen deutlich abfielen. Entscheidend für das Ergebnis war die Kombination aus hoher Abtastrate und geringem Signalrauschen; die Autoren empfehlen daher für den produktiven Einsatz an der Predictive-Maintenance-Zelle MEMS-Beschleunigungssensoren mit integriertem IIoT-Gateway.</p>
+            </div>
+            <div style="margin-top:8px;font:500 10px/1.5 'JetBrains Mono',monospace;color:#a09d95;">Kapitel 5 — Sensorvergleich; bezieht sich auf den Prüfstand der Modellfabrik Cottbus.</div>
+          </div>
+
+          <!-- anti-hallucination stack -->
+          <div style="margin-top:18px;">
+            <div style="font:600 9px/1 'JetBrains Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#a09d95;margin-bottom:10px;">Anti-Halluzination · mehrstufig</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#faf9f6;border:1px solid rgba(0,0,0,0.07);">
+                <span style="width:18px;height:18px;border-radius:50%;background:rgba(47,158,68,0.15);color:#2f9e44;display:flex;align-items:center;justify-content:center;font-size:10px;">✓</span>
+                <span style="flex:1;font-size:12px;color:#3a3a3a;">Confidence-Gate</span>
+                <span style="font:600 11px/1 'JetBrains Mono',monospace;color:#2f9e44;">0.82 · grün</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#faf9f6;border:1px solid rgba(0,0,0,0.07);">
+                <span style="width:18px;height:18px;border-radius:50%;background:rgba(47,158,68,0.15);color:#2f9e44;display:flex;align-items:center;justify-content:center;font-size:10px;">✓</span>
+                <span style="flex:1;font-size:12px;color:#3a3a3a;">Citation-Enforcement</span>
+                <span style="font:600 11px/1 'JetBrains Mono',monospace;color:#8a877f;">2/2 belegt</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#faf9f6;border:1px solid rgba(0,0,0,0.07);">
+                <span style="width:18px;height:18px;border-radius:50%;background:rgba(47,158,68,0.15);color:#2f9e44;display:flex;align-items:center;justify-content:center;font-size:10px;">✓</span>
+                <span style="flex:1;font-size:12px;color:#3a3a3a;">Grounding · Faithfulness</span>
+                <span style="font:600 11px/1 'JetBrains Mono',monospace;color:#2f9e44;">0.91</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#faf9f6;border:1px solid rgba(0,0,0,0.07);">
+                <span style="width:18px;height:18px;border-radius:50%;background:rgba(47,158,68,0.15);color:#2f9e44;display:flex;align-items:center;justify-content:center;font-size:10px;">✓</span>
+                <span style="flex:1;font-size:12px;color:#3a3a3a;">Quelle-Whitelist</span>
+                <span style="font:600 11px/1 'JetBrains Mono',monospace;color:#8a877f;">lehrstuhl_at</span>
+              </div>
+            </div>
+          </div>
+
+          <button style="margin-top:18px;width:100%;height:42px;border:none;border-radius:11px;background:#E2001A;color:#fff;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px -6px rgba(226,0,26,0.6);">Quelle öffnen ↗</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FUNDING FOOTER -->
+    <div style="display:flex;align-items:center;justify-content:space-between;height:58px;padding:0 24px;background:#f3f2ef;border-top:1px solid rgba(0,0,0,0.08);">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <img src="public/MD_zentrum_Spreeland.png" alt="Mittelstand-Digital Zentrum Spreeland" style="height:34px;width:auto;"/>
+        <span style="font-size:11px;color:#777;max-width:300px;line-height:1.4;">Ein Angebot des Mittelstand-Digital Zentrums Spreeland</span>
+      </div>
+      <img src="public/Mittellstand-Digital@BMWK.png" alt="Gefördert durch das BMWK" style="height:40px;width:auto;"/>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

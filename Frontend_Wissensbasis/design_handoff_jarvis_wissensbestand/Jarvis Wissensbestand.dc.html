@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #ecebe8; font-family: "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #E2001A; text-decoration: none; }
+  a:hover { color: #b30015; }
+  .jv-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
+  .jv-scroll::-webkit-scrollbar-thumb { background: #d0cfca; border-radius: 4px; }
+  .jv-scroll::-webkit-scrollbar-track { background: transparent; }
+</style>
+</helmet>
+<div style="min-height:100vh;padding:56px 48px 80px;background:radial-gradient(ellipse 70% 45% at 50% 0%, rgba(226,0,26,0.06) 0%, transparent 60%), #ecebe8;">
+
+  <div style="max-width:1280px;margin:0 auto 26px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:9px;height:9px;border-radius:50%;background:#E2001A;box-shadow:0 0 12px rgba(226,0,26,0.4);"></div>
+      <span style="font:600 12px/1 'JetBrains Mono',monospace;letter-spacing:0.2em;text-transform:uppercase;color:#8a877f;">Jarvis · Wissensbestand — Ingester (Dokumentenverwaltung &amp; Indexierung)</span>
+    </div>
+    <p style="margin:12px 0 0;max-width:780px;font-size:14px;line-height:1.6;color:#6b6963;">Das MDZ-Designsystem angewandt auf das Ingest-Tool: Manifest-Editor, Bestandsübersicht, Chunk-Inspektion und Indexierung — im hellen Rot/Weiß-Branding, konsistent zum Chat-Frontend. Tabs sind klickbar.</p>
+  </div>
+
+  <div style="width:1280px;height:906px;margin:0 auto;display:flex;flex-direction:column;border-radius:16px;overflow:hidden;border:1px solid rgba(0,0,0,0.1);background:#ffffff;box-shadow:0 40px 110px -35px rgba(30,20,20,0.4);">
+
+    <!-- TOPBAR -->
+    <div style="display:flex;align-items:center;justify-content:space-between;height:64px;padding:0 22px;background:#ffffff;border-bottom:1px solid rgba(0,0,0,0.08);">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <img src="uploads/MDZ_Icon.jpg" alt="MDZ" style="width:36px;height:36px;border-radius:9px;object-fit:cover;"/>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <span style="font-size:16px;font-weight:700;color:#1a1a1a;letter-spacing:-0.01em;">Jarvis — Wissensbestand</span>
+          <span style="font-size:11.5px;color:#8a877f;">Dokumentenverwaltung &amp; Indexierung · Mittelstand-Digital Zentrum Spreeland</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:8px;background:rgba(47,158,68,0.08);border:1px solid rgba(47,158,68,0.28);">
+          <span style="width:7px;height:7px;border-radius:50%;background:#2f9e44;box-shadow:0 0 8px rgba(47,158,68,0.5);"></span>
+          <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#2f9e44;">On-Prem</span>
+        </div>
+        <span style="padding:7px 10px;border-radius:8px;background:#f5f4f1;border:1px solid rgba(0,0,0,0.08);font-size:11px;font-weight:600;color:#555;">DSGVO</span>
+        <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:#f0eeea;border:1px solid rgba(0,0,0,0.08);font-size:12px;font-weight:700;color:#555;">RJ</div>
+      </div>
+    </div>
+
+    <!-- BODY -->
+    <div style="flex:1;display:flex;min-height:0;">
+
+      <!-- SIDEBAR -->
+      <div class="jv-scroll" style="width:266px;flex-shrink:0;display:flex;flex-direction:column;background:#faf9f6;border-right:1px solid rgba(0,0,0,0.07);overflow-y:auto;padding:18px 16px;">
+        <div style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#a09d95;margin-bottom:11px;">Ollama-Server</div>
+        <div style="display:flex;align-items:center;gap:8px;height:38px;padding:0 11px;border-radius:9px;background:#ffffff;border:1px solid rgba(0,0,0,0.1);margin-bottom:8px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:#2f9e44;box-shadow:0 0 7px rgba(47,158,68,0.5);"></span>
+          <span style="flex:1;font:500 11.5px/1 'JetBrains Mono',monospace;color:#333;">localhost:11434</span>
+          <span style="font-size:10px;color:#2f9e44;font-weight:600;">online</span>
+          <span style="font-size:10px;color:#9a978f;">▾</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 11px;border-radius:8px;background:#f3f2ef;margin-bottom:20px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:#c9c6bf;"></span>
+          <span style="flex:1;font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;">gpu-node-02:11434</span>
+          <span style="font-size:10px;color:#a09d95;">offline</span>
+        </div>
+
+        <div style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#a09d95;margin-bottom:11px;">Collection</div>
+        <div style="border-radius:11px;border:1px solid rgba(0,0,0,0.08);background:#ffffff;overflow:hidden;margin-bottom:20px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;"><span style="font-size:12px;color:#8a877f;">Name</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#E2001A;">halle_wissen</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-top:1px solid rgba(0,0,0,0.06);"><span style="font-size:12px;color:#8a877f;">Dokumente</span><span style="font:600 12px/1 'JetBrains Mono',monospace;color:#2a2a2a;">4</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-top:1px solid rgba(0,0,0,0.06);"><span style="font-size:12px;color:#8a877f;">Chunks</span><span style="font:600 12px/1 'JetBrains Mono',monospace;color:#2a2a2a;">218</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-top:1px solid rgba(0,0,0,0.06);"><span style="font-size:12px;color:#8a877f;">Embedding</span><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#555;">qwen3:0.6b</span></div>
+        </div>
+
+        <div style="margin-top:auto;padding:12px;border-radius:11px;background:rgba(226,0,26,0.04);border:1px solid rgba(226,0,26,0.14);">
+          <div style="font-size:11.5px;font-weight:600;color:#333;margin-bottom:4px;">Lokal-first</div>
+          <div style="font-size:11px;line-height:1.5;color:#7a776f;">Extraktion, Embedding &amp; Vektor-DB laufen on-prem. Keine Cloud, DSGVO-konform.</div>
+        </div>
+      </div>
+
+      <!-- MAIN -->
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#f7f6f3;">
+        <!-- TAB BAR -->
+        <div style="display:flex;align-items:stretch;gap:4px;padding:0 22px;background:#ffffff;border-bottom:1px solid rgba(0,0,0,0.08);">
+          <button onClick="{{ tabBestand }}" style="border:none;background:none;cursor:pointer;padding:15px 16px 13px;font-size:13.5px;font-weight:600;color: {{ cBestand }};border-bottom:2px solid {{ bBestand }};">Bestand</button>
+          <button onClick="{{ tabNeu }}" style="border:none;background:none;cursor:pointer;padding:15px 16px 13px;font-size:13.5px;font-weight:600;color: {{ cNeu }};border-bottom:2px solid {{ bNeu }};">Neues Dokument</button>
+          <button onClick="{{ tabViewer }}" style="border:none;background:none;cursor:pointer;padding:15px 16px 13px;font-size:13.5px;font-weight:600;color: {{ cViewer }};border-bottom:2px solid {{ bViewer }};">Dokument-Viewer</button>
+          <button onClick="{{ tabIndex }}" style="border:none;background:none;cursor:pointer;padding:15px 16px 13px;font-size:13.5px;font-weight:600;color: {{ cIndex }};border-bottom:2px solid {{ bIndex }};">Indexieren</button>
+        </div>
+
+        <div class="jv-scroll" style="flex:1;overflow-y:auto;padding:24px 26px;">
+
+          <!-- ============ TAB: BESTAND ============ -->
+          <sc-if value="{{ isBestand }}" hint-placeholder-val="{{ true }}">
+          <div style="max-width:840px;">
+            <h2 style="margin:0;font-size:17px;font-weight:700;color:#1a1a1a;">Gespeicherte Dokumente</h2>
+            <p style="margin:4px 0 16px;font-size:12.5px;color:#8a877f;">Dokumente im Manifest (data/manifest.yaml) · <strong style="color:#555;font-weight:600;">4 Dokumente</strong></p>
+
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:11px;background:#ffffff;border:1px solid rgba(0,0,0,0.08);">
+                <span style="width:9px;height:9px;border-radius:50%;background:#2f9e44;flex-shrink:0;box-shadow:0 0 7px rgba(47,158,68,0.4);"></span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13.5px;font-weight:600;color:#1a1a1a;">Demonstratoren Übersicht — Modellfabrik Cottbus <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;font-weight:400;">anlagen/demonstratoren.md</span></div>
+                  <div style="font-size:11.5px;color:#8a877f;margin-top:3px;">Anlagendoku · Infrastruktur · Offen</div>
+                </div>
+                <button style="border:1px solid rgba(0,0,0,0.12);background:#fff;color:#8a877f;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;">Entfernen</button>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:11px;background:#ffffff;border:1px solid rgba(0,0,0,0.08);">
+                <span style="width:9px;height:9px;border-radius:50%;background:#2f9e44;flex-shrink:0;box-shadow:0 0 7px rgba(47,158,68,0.4);"></span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13.5px;font-weight:600;color:#1a1a1a;">Systementwurf für intelligentes Datenmanagement &amp; Diagnostik (IIoT + KI) <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;font-weight:400;">abschlussarbeiten/wang.pdf</span></div>
+                  <div style="font-size:11.5px;color:#8a877f;margin-top:3px;">Abschlussarbeit · Infrastruktur, Lehre, Forschung · Intern</div>
+                </div>
+                <button style="border:1px solid rgba(0,0,0,0.12);background:#fff;color:#8a877f;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;">Entfernen</button>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:11px;background:#ffffff;border:1px solid rgba(0,0,0,0.08);">
+                <span style="width:9px;height:9px;border-radius:50%;background:#2f9e44;flex-shrink:0;box-shadow:0 0 7px rgba(47,158,68,0.4);"></span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13.5px;font-weight:600;color:#1a1a1a;">Datenhandschuhe für die Gestenerkennung in Montageprozessen <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;font-weight:400;">abschlussarbeiten/ruhs.pdf</span></div>
+                  <div style="font-size:11.5px;color:#8a877f;margin-top:3px;">Abschlussarbeit · Forschung, Infrastruktur, Transfer · Offen</div>
+                </div>
+                <button style="border:1px solid rgba(0,0,0,0.12);background:#fff;color:#8a877f;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;">Entfernen</button>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:11px;background:#ffffff;border:1px solid rgba(0,0,0,0.08);">
+                <span style="width:9px;height:9px;border-radius:50%;background:#c9c6bf;flex-shrink:0;"></span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13.5px;font-weight:600;color:#1a1a1a;">Evaluierung von Beschleunigungssensoren (Predictive Maintenance) <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;font-weight:400;">abschlussarbeiten/abdalla.pdf</span></div>
+                  <div style="font-size:11.5px;color:#8a877f;margin-top:3px;">Abschlussarbeit · Forschung, Infrastruktur, Transfer · Offen</div>
+                </div>
+                <button style="border:1px solid rgba(0,0,0,0.12);background:#fff;color:#8a877f;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;">Entfernen</button>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:16px;margin-top:12px;font-size:11px;color:#a09d95;">
+              <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:#2f9e44;"></span>in Qdrant indexiert</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:#c9c6bf;"></span>nicht indexiert</span>
+            </div>
+
+            <div style="height:1px;background:rgba(0,0,0,0.08);margin:22px 0;"></div>
+
+            <h2 style="margin:0;font-size:17px;font-weight:700;color:#1a1a1a;">Indexierte Dokumente</h2>
+            <p style="margin:4px 0 14px;font-size:12.5px;color:#8a877f;">Chunks in der Qdrant-Collection · <strong style="color:#555;font-weight:600;">3 Dokumente</strong> mit <strong style="color:#555;font-weight:600;">218 Chunks</strong></p>
+
+            <div style="border-radius:11px;border:1px solid rgba(0,0,0,0.08);overflow:hidden;background:#ffffff;">
+              <div style="display:grid;grid-template-columns:1.4fr 2fr 0.7fr 1fr 0.9fr;background:#faf9f6;border-bottom:1px solid rgba(0,0,0,0.08);">
+                <div style="padding:9px 12px;font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#a09d95;">Datei</div>
+                <div style="padding:9px 12px;font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#a09d95;">Titel</div>
+                <div style="padding:9px 12px;font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#a09d95;">Chunks</div>
+                <div style="padding:9px 12px;font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#a09d95;">Hash</div>
+                <div style="padding:9px 12px;font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#a09d95;">Manifest</div>
+              </div>
+              <div style="display:grid;grid-template-columns:1.4fr 2fr 0.7fr 1fr 0.9fr;border-bottom:1px solid rgba(0,0,0,0.05);">
+                <div style="padding:10px 12px;font:500 11px/1.3 'JetBrains Mono',monospace;color:#555;">demonstratoren.md</div>
+                <div style="padding:10px 12px;font-size:12px;color:#2a2a2a;">Demonstratoren Übersicht</div>
+                <div style="padding:10px 12px;font:600 11px/1 'JetBrains Mono',monospace;color:#2a2a2a;">42</div>
+                <div style="padding:10px 12px;font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;">a3f9c1d84e…</div>
+                <div style="padding:10px 12px;"><span style="font-size:11px;font-weight:600;color:#2f9e44;">Ja</span></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1.4fr 2fr 0.7fr 1fr 0.9fr;border-bottom:1px solid rgba(0,0,0,0.05);">
+                <div style="padding:10px 12px;font:500 11px/1.3 'JetBrains Mono',monospace;color:#555;">wang.pdf</div>
+                <div style="padding:10px 12px;font-size:12px;color:#2a2a2a;">Systementwurf IIoT + KI</div>
+                <div style="padding:10px 12px;font:600 11px/1 'JetBrains Mono',monospace;color:#2a2a2a;">98</div>
+                <div style="padding:10px 12px;font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;">7b21e0aa9c…</div>
+                <div style="padding:10px 12px;"><span style="font-size:11px;font-weight:600;color:#2f9e44;">Ja</span></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1.4fr 2fr 0.7fr 1fr 0.9fr;">
+                <div style="padding:10px 12px;font:500 11px/1.3 'JetBrains Mono',monospace;color:#555;">ruhs.pdf</div>
+                <div style="padding:10px 12px;font-size:12px;color:#2a2a2a;">Datenhandschuhe Gestenerkennung</div>
+                <div style="padding:10px 12px;font:600 11px/1 'JetBrains Mono',monospace;color:#2a2a2a;">78</div>
+                <div style="padding:10px 12px;font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;">c05d4fb712…</div>
+                <div style="padding:10px 12px;"><span style="font-size:11px;font-weight:600;color:#2f9e44;">Ja</span></div>
+              </div>
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- ============ TAB: NEUES DOKUMENT ============ -->
+          <sc-if value="{{ isNeu }}">
+          <div style="max-width:840px;">
+            <h2 style="margin:0 0 12px;font-size:17px;font-weight:700;color:#1a1a1a;">Dokument hochladen</h2>
+            <div style="display:flex;align-items:center;gap:14px;padding:22px;border-radius:12px;border:1.5px dashed rgba(226,0,26,0.3);background:rgba(226,0,26,0.03);">
+              <div style="width:44px;height:44px;border-radius:11px;background:rgba(226,0,26,0.1);color:#E2001A;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+              <div style="flex:1;">
+                <div style="font-size:13.5px;font-weight:600;color:#1a1a1a;">Datei hierher ziehen oder wählen</div>
+                <div style="font-size:11.5px;color:#8a877f;margin-top:2px;">PDF, DOCX, PPTX, XLSX, Markdown oder TXT</div>
+              </div>
+              <button style="border:none;background:#E2001A;color:#fff;font-size:12.5px;font-weight:600;padding:9px 16px;border-radius:9px;cursor:pointer;">Durchsuchen</button>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:9px;margin-top:12px;padding:10px 13px;border-radius:9px;background:rgba(47,158,68,0.07);border:1px solid rgba(47,158,68,0.22);">
+              <span style="width:16px;height:16px;border-radius:50%;background:rgba(47,158,68,0.16);color:#2f9e44;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;">✓</span>
+              <span style="font-size:12px;color:#2a7a3a;"><strong style="font-weight:600;">abdalla.pdf</strong> analysiert — Metadaten automatisch vorausgefüllt, bitte prüfen.</span>
+            </div>
+
+            <h3 style="margin:22px 0 12px;font-size:14px;font-weight:700;color:#1a1a1a;">Metadaten</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px 24px;">
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Titel <span style="color:#E2001A;">*</span></div>
+                <div style="height:38px;padding:0 12px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;align-items:center;font-size:13px;color:#2a2a2a;">Evaluierung von Beschleunigungssensoren…</div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Vertraulichkeit <span style="color:#E2001A;">*</span></div>
+                <div style="height:38px;padding:0 12px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;align-items:center;font-size:13px;color:#2a2a2a;">Offen <span style="margin-left:auto;color:#9a978f;">▾</span></div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Dokumenttyp <span style="color:#E2001A;">*</span></div>
+                <div style="height:38px;padding:0 12px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;align-items:center;font-size:13px;color:#2a2a2a;">Abschlussarbeit <span style="margin-left:auto;color:#9a978f;">▾</span></div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Status</div>
+                <div style="height:38px;padding:0 12px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;align-items:center;font-size:13px;color:#2a2a2a;">Final <span style="margin-left:auto;color:#9a978f;">▾</span></div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Bereich <span style="color:#E2001A;">*</span></div>
+                <div style="min-height:38px;padding:6px 8px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+                  <span style="padding:3px 8px;border-radius:6px;font-size:11px;font-weight:500;background:rgba(226,0,26,0.1);color:#E2001A;">Forschung ✕</span>
+                  <span style="padding:3px 8px;border-radius:6px;font-size:11px;font-weight:500;background:rgba(226,0,26,0.1);color:#E2001A;">Infrastruktur ✕</span>
+                  <span style="padding:3px 8px;border-radius:6px;font-size:11px;font-weight:500;background:rgba(226,0,26,0.1);color:#E2001A;">Transfer ✕</span>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Jahr</div>
+                <div style="height:38px;padding:0 12px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;align-items:center;font:500 13px/1 'JetBrains Mono',monospace;color:#2a2a2a;">2025</div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Herkunft <span style="color:#E2001A;">*</span></div>
+                <div style="height:38px;padding:0 12px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;align-items:center;font-size:13px;color:#2a2a2a;">Lehrstuhl Automatisierungstechnik <span style="margin-left:auto;color:#9a978f;">▾</span></div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Grad</div>
+                <div style="height:38px;padding:0 12px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;align-items:center;font-size:13px;color:#2a2a2a;">Master <span style="margin-left:auto;color:#9a978f;">▾</span></div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Quelltyp <span style="color:#E2001A;">*</span></div>
+                <div style="height:38px;padding:0 12px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;align-items:center;font-size:13px;color:#2a2a2a;">Primärquelle <span style="margin-left:auto;color:#9a978f;">▾</span></div>
+              </div>
+            </div>
+
+            <h3 style="margin:22px 0 12px;font-size:14px;font-weight:700;color:#1a1a1a;">Facetten <span style="font-weight:500;color:#a09d95;font-size:12px;">(optional)</span></h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px 24px;">
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Anlage</div>
+                <div style="min-height:38px;padding:6px 8px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+                  <span style="padding:3px 8px;border-radius:6px;font:500 10.5px/1.3 'JetBrains Mono',monospace;background:rgba(226,0,26,0.1);color:#E2001A;">predictive_maintenance ✕</span>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Thema</div>
+                <div style="min-height:38px;padding:6px 8px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+                  <span style="padding:3px 8px;border-radius:6px;font:500 10.5px/1.3 'JetBrains Mono',monospace;background:rgba(226,0,26,0.1);color:#E2001A;">mensch_maschine_interaktion ✕</span>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Ansprechperson</div>
+                <div style="min-height:38px;padding:6px 8px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+                  <span style="padding:3px 8px;border-radius:6px;font:500 10.5px/1.3 'JetBrains Mono',monospace;background:rgba(226,0,26,0.1);color:#E2001A;">berger ✕</span>
+                  <span style="padding:3px 8px;border-radius:6px;font:500 10.5px/1.3 'JetBrains Mono',monospace;background:rgba(226,0,26,0.1);color:#E2001A;">lautsch ✕</span>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Projekt</div>
+                <div style="min-height:38px;padding:6px 8px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+                  <span style="font-size:11.5px;color:#b8b5ad;">— keine —</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;padding:12px 14px;border-radius:10px;background:#faf9f6;border:1px solid rgba(0,0,0,0.08);display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <span style="color:#9a978f;font-size:13px;">▸</span>
+              <span style="font-size:12.5px;font-weight:600;color:#555;">Neuen Facetten-Wert anlegen</span>
+              <span style="font-size:11.5px;color:#a09d95;">Thema · Anlage · Projekt · Ansprechperson</span>
+            </div>
+
+            <div style="height:1px;background:rgba(0,0,0,0.08);margin:20px 0;"></div>
+            <button style="border:none;background:#E2001A;color:#fff;font-size:13.5px;font-weight:600;padding:11px 22px;border-radius:10px;cursor:pointer;box-shadow:0 6px 18px -6px rgba(226,0,26,0.6);">Dokument speichern</button>
+          </div>
+          </sc-if>
+
+          <!-- ============ TAB: DOKUMENT-VIEWER ============ -->
+          <sc-if value="{{ isViewer }}">
+          <div style="max-width:840px;">
+            <h2 style="margin:0;font-size:17px;font-weight:700;color:#1a1a1a;">Dokument-Viewer</h2>
+            <p style="margin:4px 0 16px;font-size:12.5px;color:#8a877f;">Dokument anzeigen und Chunks mit Metadaten inspizieren</p>
+
+            <div style="font-size:11.5px;font-weight:600;color:#555;margin-bottom:6px;">Dokument auswählen</div>
+            <div style="height:40px;padding:0 13px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,0.12);display:flex;align-items:center;font-size:13px;color:#2a2a2a;margin-bottom:18px;">Datenhandschuhe für die Gestenerkennung… <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;margin-left:8px;">(ruhs.pdf)</span><span style="margin-left:auto;color:#9a978f;">▾</span></div>
+
+            <div style="border-radius:11px;border:1px solid rgba(0,0,0,0.08);background:#faf9f6;padding:14px 16px;margin-bottom:18px;">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 18px;font-size:12.5px;color:#3a3a3a;">
+                <div><span style="color:#8a877f;">Titel:</span> Datenhandschuhe Gestenerkennung</div>
+                <div><span style="color:#8a877f;">Herkunft:</span> Lehrstuhl AT</div>
+                <div><span style="color:#8a877f;">Jahr:</span> 2025</div>
+                <div><span style="color:#8a877f;">Typ:</span> Abschlussarbeit</div>
+                <div><span style="color:#8a877f;">Quelltyp:</span> Primärquelle</div>
+                <div><span style="color:#8a877f;">Status:</span> Final</div>
+                <div><span style="color:#8a877f;">Bereich:</span> Forschung, Infrastruktur</div>
+                <div><span style="color:#8a877f;">Vertraul.:</span> Offen</div>
+                <div><span style="color:#8a877f;">Grad:</span> Master</div>
+              </div>
+            </div>
+
+            <h3 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1a1a1a;">Chunks in Qdrant <span style="font-weight:500;color:#a09d95;font-size:12px;">78 Chunks indexiert</span></h3>
+
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <!-- chunk expanded -->
+              <div style="border-radius:11px;border:1px solid rgba(0,0,0,0.08);background:#fff;overflow:hidden;">
+                <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid rgba(0,0,0,0.06);">
+                  <span style="font-size:12px;color:#9a978f;transform:rotate(90deg);">▸</span>
+                  <span style="font:600 12px/1 'JetBrains Mono',monospace;color:#333;">Chunk 12</span>
+                  <span style="color:#d0cdc5;">|</span>
+                  <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#8a877f;">612 Zeichen</span>
+                  <span style="color:#d0cdc5;">|</span>
+                  <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;">ID: 8a2f10c9e4…</span>
+                </div>
+                <div style="padding:13px 14px;">
+                  <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:6px;">Text</div>
+                  <div style="padding:11px 13px;border-radius:8px;background:#f8f9fa;border-left:3px solid #E2001A;font-size:12.5px;line-height:1.65;color:#333;">Die kapazitiven Dehnungssensoren im Datenhandschuh wurden an fünf Probanden kalibriert. Für die Gestenerkennung in Montageprozessen erreichte das LSTM-Modell nach dem Feintuning eine Erkennungsrate von 91,7 % über zwölf definierte Handgesten. Fehlklassifikationen traten vor allem bei ähnlichen Greifgesten auf.</div>
+                  <div style="font-size:11px;font-weight:600;color:#555;margin:11px 0 6px;">Context-Prefix</div>
+                  <div style="padding:9px 12px;border-radius:8px;background:#fff8e6;border:1px solid rgba(227,160,8,0.3);font-size:11.5px;line-height:1.55;font-style:italic;color:#8a6d1a;">Kapitel 4 — Experimentelle Validierung des Datenhandschuhs an der Montagestation.</div>
+                  <div style="font-size:11px;font-weight:600;color:#555;margin:11px 0 6px;">Metadaten</div>
+                  <div style="border-radius:8px;border:1px solid rgba(0,0,0,0.08);overflow:hidden;">
+                    <div style="display:grid;grid-template-columns:120px 1fr;">
+                      <div style="padding:5px 11px;font-size:11px;font-weight:600;background:#f3f2ef;color:#555;">Chunk-Nr.</div><div style="padding:5px 11px;font:500 11px/1.3 'JetBrains Mono',monospace;color:#333;">12</div>
+                      <div style="padding:5px 11px;font-size:11px;font-weight:600;background:#f3f2ef;color:#555;border-top:1px solid rgba(0,0,0,0.05);">Seite</div><div style="padding:5px 11px;font:500 11px/1.3 'JetBrains Mono',monospace;color:#333;border-top:1px solid rgba(0,0,0,0.05);">31</div>
+                      <div style="padding:5px 11px;font-size:11px;font-weight:600;background:#f3f2ef;color:#555;border-top:1px solid rgba(0,0,0,0.05);">Anlage</div><div style="padding:5px 11px;font:500 11px/1.3 'JetBrains Mono',monospace;color:#333;border-top:1px solid rgba(0,0,0,0.05);">datenhandschuhe, gestenerkennung</div>
+                      <div style="padding:5px 11px;font-size:11px;font-weight:600;background:#f3f2ef;color:#555;border-top:1px solid rgba(0,0,0,0.05);">Quelltyp</div><div style="padding:5px 11px;font:500 11px/1.3 'JetBrains Mono',monospace;color:#333;border-top:1px solid rgba(0,0,0,0.05);">Primärquelle</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button style="border:1px solid rgba(0,0,0,0.12);background:#fff;color:#8a877f;font-size:11.5px;font-weight:600;padding:6px 13px;border-radius:8px;cursor:pointer;">Löschen</button>
+                    <button style="border:1px solid rgba(0,0,0,0.12);background:#fff;color:#555;font-size:11.5px;font-weight:600;padding:6px 13px;border-radius:8px;cursor:pointer;">Bearbeiten</button>
+                  </div>
+                </div>
+              </div>
+              <!-- chunk collapsed -->
+              <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:11px;border:1px solid rgba(0,0,0,0.08);background:#fff;">
+                <span style="font-size:12px;color:#9a978f;">▸</span>
+                <span style="font:600 12px/1 'JetBrains Mono',monospace;color:#333;">Chunk 13</span>
+                <span style="color:#d0cdc5;">|</span>
+                <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#8a877f;">588 Zeichen</span>
+                <span style="color:#d0cdc5;">|</span>
+                <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;">ID: 41b7ce02af…</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:11px;border:1px solid rgba(0,0,0,0.08);background:#fff;">
+                <span style="font-size:12px;color:#9a978f;">▸</span>
+                <span style="font:600 12px/1 'JetBrains Mono',monospace;color:#333;">Chunk 14</span>
+                <span style="color:#d0cdc5;">|</span>
+                <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#8a877f;">701 Zeichen</span>
+                <span style="color:#d0cdc5;">|</span>
+                <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#a09d95;">ID: 9d3a55f1bc…</span>
+              </div>
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- ============ TAB: INDEXIEREN ============ -->
+          <sc-if value="{{ isIndex }}">
+          <div style="max-width:840px;">
+            <h2 style="margin:0;font-size:17px;font-weight:700;color:#1a1a1a;">Wissensbestand indexieren</h2>
+            <p style="margin:4px 0 16px;font-size:12.5px;color:#8a877f;">Dokumente auswählen und indexieren: Extraktion, Chunking, Embedding und Qdrant-Upsert.</p>
+
+            <div style="display:flex;gap:8px;margin-bottom:14px;">
+              <button style="border:1px solid rgba(0,0,0,0.12);background:#fff;color:#555;font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;cursor:pointer;">Alle auswählen</button>
+              <button style="border:1px solid rgba(0,0,0,0.12);background:#fff;color:#555;font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;cursor:pointer;">Keine auswählen</button>
+              <button style="border:1px solid rgba(226,0,26,0.3);background:rgba(226,0,26,0.06);color:#E2001A;font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;cursor:pointer;">Nur neue auswählen</button>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:7px;">
+              <label style="display:flex;align-items:center;gap:11px;padding:11px 14px;border-radius:10px;border:1px solid rgba(0,0,0,0.08);background:#fff;cursor:pointer;">
+                <span style="width:16px;height:16px;border-radius:4px;border:1px solid rgba(0,0,0,0.2);flex-shrink:0;"></span>
+                <span style="width:9px;height:9px;border-radius:50%;background:#2f9e44;flex-shrink:0;"></span>
+                <span style="flex:1;font-size:12.5px;color:#2a2a2a;">Demonstratoren Übersicht <span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#a09d95;">anlagen/demonstratoren.md</span></span>
+                <span style="font-size:10.5px;font-weight:600;color:#2f9e44;">indexiert</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:11px;padding:11px 14px;border-radius:10px;border:1px solid rgba(0,0,0,0.08);background:#fff;cursor:pointer;">
+                <span style="width:16px;height:16px;border-radius:4px;border:1px solid rgba(0,0,0,0.2);flex-shrink:0;"></span>
+                <span style="width:9px;height:9px;border-radius:50%;background:#2f9e44;flex-shrink:0;"></span>
+                <span style="flex:1;font-size:12.5px;color:#2a2a2a;">Systementwurf IIoT + KI <span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#a09d95;">abschlussarbeiten/wang.pdf</span></span>
+                <span style="font-size:10.5px;font-weight:600;color:#2f9e44;">indexiert</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:11px;padding:11px 14px;border-radius:10px;border:1px solid rgba(226,0,26,0.25);background:rgba(226,0,26,0.04);cursor:pointer;">
+                <span style="width:16px;height:16px;border-radius:4px;background:#E2001A;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;flex-shrink:0;">✓</span>
+                <span style="width:9px;height:9px;border-radius:50%;background:#c9c6bf;flex-shrink:0;"></span>
+                <span style="flex:1;font-size:12.5px;color:#2a2a2a;">Evaluierung Beschleunigungssensoren <span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#a09d95;">abschlussarbeiten/abdalla.pdf</span></span>
+                <span style="font-size:10.5px;font-weight:600;color:#a09d95;">neu</span>
+              </label>
+            </div>
+
+            <div style="margin-top:12px;padding:10px 13px;border-radius:9px;background:rgba(226,0,26,0.05);border:1px solid rgba(226,0,26,0.16);font-size:12px;color:#a01018;"><strong style="font-weight:700;">1 Dokument</strong> ausgewählt — 1 neu</div>
+
+            <label style="display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;">
+              <span style="width:16px;height:16px;border-radius:4px;border:1px solid rgba(0,0,0,0.2);flex-shrink:0;"></span>
+              <span style="font-size:12.5px;color:#555;">Collection zurücksetzen <span style="color:#a09d95;">— löscht die bestehende Qdrant-Collection und baut sie neu auf</span></span>
+            </label>
+
+            <div style="margin-top:16px;"><button style="border:none;background:#E2001A;color:#fff;font-size:13.5px;font-weight:600;padding:11px 22px;border-radius:10px;cursor:pointer;box-shadow:0 6px 18px -6px rgba(226,0,26,0.6);">Indexieren starten</button></div>
+
+            <div style="height:1px;background:rgba(0,0,0,0.08);margin:22px 0;"></div>
+
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px;padding:11px 14px;border-radius:10px;background:rgba(47,158,68,0.08);border:1px solid rgba(47,158,68,0.25);">
+              <span style="width:18px;height:18px;border-radius:50%;background:rgba(47,158,68,0.16);color:#2f9e44;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">✓</span>
+              <span style="font-size:12.5px;color:#2a7a3a;font-weight:600;">Indexierung abgeschlossen: 44 Chunks in Qdrant geschrieben.</span>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+              <div style="padding:13px;border-radius:11px;background:#fff;border:1px solid rgba(0,0,0,0.08);text-align:center;"><div style="font:700 22px/1 'JetBrains Mono',monospace;color:#1a1a1a;">1</div><div style="font-size:10.5px;color:#8a877f;margin-top:5px;">Gesamt</div></div>
+              <div style="padding:13px;border-radius:11px;background:#fff;border:1px solid rgba(0,0,0,0.08);text-align:center;"><div style="font:700 22px/1 'JetBrains Mono',monospace;color:#2f9e44;">1</div><div style="font-size:10.5px;color:#8a877f;margin-top:5px;">Erfolgreich</div></div>
+              <div style="padding:13px;border-radius:11px;background:#fff;border:1px solid rgba(0,0,0,0.08);text-align:center;"><div style="font:700 22px/1 'JetBrains Mono',monospace;color:#9a978f;">0</div><div style="font-size:10.5px;color:#8a877f;margin-top:5px;">Übersprungen</div></div>
+              <div style="padding:13px;border-radius:11px;background:#fff;border:1px solid rgba(0,0,0,0.08);text-align:center;"><div style="font:700 22px/1 'JetBrains Mono',monospace;color:#9a978f;">0</div><div style="font-size:10.5px;color:#8a877f;margin-top:5px;">Fehlgeschlagen</div></div>
+              <div style="padding:13px;border-radius:11px;background:rgba(226,0,26,0.05);border:1px solid rgba(226,0,26,0.16);text-align:center;"><div style="font:700 22px/1 'JetBrains Mono',monospace;color:#E2001A;">44</div><div style="font-size:10.5px;color:#a01018;margin-top:5px;">Chunks</div></div>
+            </div>
+
+            <div style="margin-top:14px;border-radius:10px;background:#1c1c1c;border:1px solid rgba(0,0,0,0.2);padding:13px 15px;">
+              <div style="font:500 11px/1.7 'JetBrains Mono',monospace;color:#c9c9c9;">
+                <span style="color:#7cd894;">INFO</span>  Extrahiere 1 Dokument (Docling)…<br/>
+                <span style="color:#7cd894;">INFO</span>  abdalla.pdf → 44 Chunks (HybridChunker)<br/>
+                <span style="color:#7cd894;">INFO</span>  Contextual-Enricher: 44/44 angereichert<br/>
+                <span style="color:#7cd894;">INFO</span>  Embedding dense (qwen3:0.6b) + sparse (BM25) OK<br/>
+                <span style="color:#7cd894;">INFO</span>  Qdrant-Upsert halle_wissen: 44 Punkte<br/>
+                <span style="color:#e3b84a;">DONE</span>  Fertig in 18.4s
+              </div>
+            </div>
+          </div>
+          </sc-if>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- FUNDING FOOTER -->
+    <div style="display:flex;align-items:center;justify-content:space-between;height:58px;padding:0 24px;background:#f3f2ef;border-top:1px solid rgba(0,0,0,0.08);">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <img src="public/MD_zentrum_Spreeland.png" alt="Mittelstand-Digital Zentrum Spreeland" style="height:34px;width:auto;"/>
+        <span style="font-size:11px;color:#777;max-width:300px;line-height:1.4;">Ein Angebot des Mittelstand-Digital Zentrums Spreeland</span>
+      </div>
+      <img src="public/Mittellstand-Digital@BMWK.png" alt="Gefördert durch das BMWK" style="height:40px;width:auto;"/>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { tab: "bestand" };
+  renderVals() {
+    const t = this.state.tab;
+    const set = (name) => () => this.setState({ tab: name });
+    const col = (name) => (t === name ? "#E2001A" : "#6b6963");
+    const bor = (name) => (t === name ? "#E2001A" : "transparent");
+    return {
+      isBestand: t === "bestand",
+      isNeu: t === "neu",
+      isViewer: t === "viewer",
+      isIndex: t === "index",
+      tabBestand: set("bestand"),
+      tabNeu: set("neu"),
+      tabViewer: set("viewer"),
+      tabIndex: set("index"),
+      cBestand: col("bestand"), bBestand: bor("bestand"),
+      cNeu: col("neu"), bNeu: bor("neu"),
+      cViewer: col("viewer"), bViewer: bor("viewer"),
+      cIndex: col("index"), bIndex: bor("index"),
+    };
+  }
+}
+</script>
+</body>
+</html>
