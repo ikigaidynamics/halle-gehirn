@@ -13,6 +13,7 @@ ausgeschlossen.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ import httpx
 import structlog
 from docling.datamodel.base_models import ConversionStatus, InputFormat
 from docling.datamodel.pipeline_options import (
+    AcceleratorOptions,
     OcrAutoOptions,
     PdfPipelineOptions,
     TableFormerMode,
@@ -35,15 +37,21 @@ from halle_gehirn.extraction.base import (
     PartialExtractionError,
     TableBlock,
 )
-from halle_gehirn.extraction.boilerplate import clean as clean_boilerplate
+from halle_gehirn.extraction.boilerplate import (
+    clean as clean_boilerplate,
+    remove_inline_citations,
+)
 from halle_gehirn.extraction.figure_utils import (
     extract_figures_from_serve,
     extract_figures_local,
 )
 from halle_gehirn.extraction.page_map import (
+    PAGE_BREAK_MARKER,
     build_page_map,
     join_pages_with_map,
     remove_cross_page_repeats,
+    strip_markers_and_clean,
+    strip_page_markers,
 )
 
 logger = structlog.get_logger(__name__)
@@ -56,6 +64,31 @@ _SUPPORTED: frozenset[str] = frozenset({
 # Maximal tolerierter Anteil fehlgeschlagener Seiten (20 %).
 # Ueberschritten -> Fallback.
 _MAX_PAGE_LOSS_RATIO: float = 0.2
+
+# Mindest-Anteil an "lesbaren" Zeichen (Alphanumerik + gaengige
+# Interpunktion + Whitespace) im Body-Markdown. Unter diesem Wert
+# gilt die Extraktion als "garbled" (kaputte Font-Encodings, Dingbats,
+# eingebettete Binaerdaten) und der pymupdf-Fallback wird ausgeloest.
+_MIN_READABLE_RATIO: float = 0.75
+
+# Inline-Data-URIs im Markdown: ``![...](data:image/...;base64,...)``
+# Docling Serve bettet bei ``image_export_mode=embedded`` alle Bilder
+# als Base64-Strings in den Markdown ein. Diese sind redundant (Bilder
+# werden separat via ``extract_figures_*`` verarbeitet) und muessen VOR
+# jeder weiteren Verarbeitung entfernt werden — sonst erzeugt der
+# Chunker tausende Muell-Chunks aus den Binaerdaten.
+_INLINE_DATA_URI_RE = re.compile(
+    r"!\[[^\]]*\]\(data:[^)]+\)",
+)
+
+# Mindest-Body-Laenge NACH dem Strippen: unter diesem Wert gilt der
+# Body als leer (kein extrahierbarer Text). Bei mehrseitigen Dokumenten
+# wird dann ein OCR-Retry ausgeloest.
+_MIN_BODY_CHARS_AFTER_STRIP = 200
+
+# PDFs ab dieser Seitenzahl werden zuerst mit pymupdf4llm versucht,
+# da Doclings ONNX-Modelle bei großen PDFs zu std::bad_alloc führen.
+_PYMUPDF_FIRST_THRESHOLD = 25
 
 
 class DoclingExtractor:
@@ -107,6 +140,148 @@ class DoclingExtractor:
             size_bytes=path.stat().st_size,
         )
 
+        # Große PDFs: pymupdf4llm zuerst (Doclings ONNX-Modelle
+        # verursachen std::bad_alloc ab ~20 Seiten)
+        if path.suffix.lower() == ".pdf":
+            page_count = _quick_page_count(path)
+            if page_count is not None and page_count > _PYMUPDF_FIRST_THRESHOLD:
+                logger.info(
+                    "large_pdf_pymupdf_first",
+                    path=str(path),
+                    pages=page_count,
+                    threshold=_PYMUPDF_FIRST_THRESHOLD,
+                )
+                try:
+                    return self._pymupdf_fallback(path)
+                except ExtractionError as exc:
+                    logger.warning(
+                        "pymupdf_first_failed_trying_docling",
+                        path=str(path),
+                        error=str(exc),
+                    )
+                    # Weiter zu Docling als Fallback
+
+        try:
+            return self._extract_inner(path, do_ocr=do_ocr)
+        except PartialExtractionError as exc:
+            if path.suffix.lower() != ".pdf":
+                raise ExtractionError(str(exc)) from exc
+
+            # -- OCR-Retry: wenn Body leer war (scan-basiertes PDF) --
+            effective_ocr = do_ocr if do_ocr is not None else self._settings.docling_ocr
+            if not effective_ocr:
+                ocr_result = self._ocr_retry(path, exc)
+                if ocr_result is not None:
+                    return ocr_result
+                # Weiter zum pymupdf-Fallback
+
+            # pymupdf-Fallback versuchen
+            logger.warning(
+                "docling_fallback_triggered",
+                path=str(path),
+                failed_pages=exc.failed_pages,
+                total_pages=exc.total_pages,
+            )
+            return self._pymupdf_fallback(path)
+        except ExtractionError:
+            if path.suffix.lower() == ".pdf":
+                logger.warning(
+                    "docling_crash_fallback", path=str(path),
+                )
+                return self._pymupdf_fallback(path)
+            raise
+
+    def _ocr_retry(
+        self,
+        path: Path,
+        original_exc: PartialExtractionError,
+    ) -> ExtractedDoc | None:
+        """OCR-Retry mit expliziter Serve-Priorisierung.
+
+        Versucht OCR in dieser Reihenfolge:
+        1. Docling Serve (hat genug RAM für große PDFs)
+        2. Lokales Docling NUR bei kleinen PDFs (≤ Threshold)
+        3. Gibt None zurück → Caller fällt durch zu pymupdf
+
+        Returns:
+            ExtractedDoc bei Erfolg, None bei Fehlschlag.
+        """
+        logger.warning(
+            "ocr_retry_triggered",
+            path=str(path),
+            reason=str(original_exc),
+        )
+
+        # 1. OCR via Docling Serve (Server hat genug Speicher)
+        if self._settings.docling_serve_url:
+            try:
+                result = self._convert_remote(path, do_ocr=True)
+                result.meta["ocr_retry"] = "true"
+                logger.info(
+                    "ocr_retry_success_via_serve",
+                    path=str(path),
+                    body_chars=len(result.body_md),
+                )
+                return result
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                logger.warning(
+                    "ocr_retry_serve_unreachable",
+                    url=self._settings.docling_serve_url,
+                    error=str(exc),
+                )
+            except (PartialExtractionError, ExtractionError) as exc:
+                logger.warning(
+                    "ocr_retry_serve_failed",
+                    path=str(path),
+                    error=str(exc),
+                )
+
+        # 2. Lokales OCR NUR bei kleinen PDFs (große → Speicherproblem)
+        page_count = _quick_page_count(path)
+        if page_count is not None and page_count > _PYMUPDF_FIRST_THRESHOLD:
+            logger.warning(
+                "ocr_retry_local_skipped_too_large",
+                path=str(path),
+                pages=page_count,
+                threshold=_PYMUPDF_FIRST_THRESHOLD,
+                hint=(
+                    "Lokales OCR übersprungen — PDF zu groß für "
+                    "verfügbaren Speicher. Docling Serve starten oder "
+                    "Maschine mit mehr RAM verwenden."
+                ),
+            )
+            return None
+
+        try:
+            logger.info(
+                "ocr_retry_local_start",
+                path=str(path),
+                pages=page_count,
+            )
+            result = self._extract_inner(path, do_ocr=True)
+            result.meta["ocr_retry"] = "true"
+            logger.info(
+                "ocr_retry_success_local",
+                path=str(path),
+                body_chars=len(result.body_md),
+            )
+            return result
+        except (PartialExtractionError, ExtractionError) as exc:
+            _log_memory_aware_error(path, exc)
+            return None
+
+    def _extract_inner(
+        self,
+        path: Path,
+        *,
+        do_ocr: bool | None = None,
+    ) -> ExtractedDoc:
+        """Innere Extraktionslogik (ohne Retry/Fallback).
+
+        Wird von ``extract()`` aufgerufen und kann bei leerem Body
+        ``PartialExtractionError`` werfen, die der Caller fuer
+        OCR-Retry oder pymupdf-Fallback nutzt.
+        """
         if self._settings.docling_serve_url:
             try:
                 return self._convert_remote(path, do_ocr=do_ocr)
@@ -118,27 +293,8 @@ class DoclingExtractor:
                 )
                 # Fall through to local Docling pipeline
 
-        try:
-            docling_doc = self._convert(path, do_ocr=do_ocr)
-            return self._build_result(docling_doc, path)
-        except PartialExtractionError as exc:
-            if path.suffix.lower() != ".pdf":
-                raise ExtractionError(str(exc)) from exc
-            logger.warning(
-                "docling_fallback_triggered",
-                path=str(path),
-                failed_pages=exc.failed_pages,
-                total_pages=exc.total_pages,
-            )
-            return self._pymupdf_fallback(path)
-        except ExtractionError:
-            # Docling komplett gescheitert -- Fallback versuchen
-            if path.suffix.lower() == ".pdf":
-                logger.warning(
-                    "docling_crash_fallback", path=str(path),
-                )
-                return self._pymupdf_fallback(path)
-            raise
+        docling_doc = self._convert(path, do_ocr=do_ocr)
+        return self._build_result(docling_doc, path)
 
     def _convert_remote(
         self,
@@ -179,6 +335,10 @@ class DoclingExtractor:
                     "do_ocr": str(ocr_flag).lower(),
                     "table_mode": self._settings.docling_table_mode,
                     "image_export_mode": "embedded",
+                    "include_images": str(
+                        self._settings.docling_do_figures
+                    ).lower(),
+                    "md_page_break_placeholder": PAGE_BREAK_MARKER,
                 },
             )
         resp.raise_for_status()
@@ -218,8 +378,41 @@ class DoclingExtractor:
         body_md: str = doc.get("md_content") or ""
         jc: dict[str, Any] = doc.get("json_content") or {}
 
-        if self._settings.boilerplate_clean:
-            body_md = clean_boilerplate(body_md)
+        # -- ALLERERSTER Schritt: inline Data-URIs entfernen (VOR allem
+        #    anderen — Page-Marker-Strip, Boilerplate, Quality-Check) --
+        body_md = _strip_inline_data_uris(body_md, path)
+
+        # -- Page-Map + Cleaning in einem Schritt (Sentinel-basiert):
+        #    Seitenumbruch-Marker → unsichtbare Sentinels → Cleaning →
+        #    Sentinel-Positionen extrahieren → exakte Page-Map.
+        #    Fallback auf Needle-Suche wenn keine Marker vorhanden. --
+        clean_fn = clean_boilerplate if self._settings.boilerplate_clean else None
+        if PAGE_BREAK_MARKER in body_md:
+            body_md, page_map = strip_markers_and_clean(
+                body_md, clean_fn=clean_fn,
+            )
+        else:
+            if clean_fn:
+                body_md = clean_fn(body_md)
+            # Fallback: Needle-Suche in json_content texts
+            page_elements: list[tuple[str, int | None]] = []
+            for txt in jc.get("texts", []):
+                text = txt.get("text", "")
+                if not text.strip():
+                    continue
+                prov = txt.get("prov", [])
+                pg = prov[0]["page_no"] if prov else None
+                page_elements.append((text, pg))
+            page_map = build_page_map(
+                body_md, page_elements,
+                normalize=remove_inline_citations,
+            )
+
+        # -- Leerer-Body-Guard: NACH Data-URI-Strip + Page-Marker-Strip
+        #    + Boilerplate-Cleaning — prüft den finalen Body --
+        pages_dict = jc.get("pages", {})
+        page_count_early = len(pages_dict) if pages_dict else None
+        _check_body_not_empty(body_md, path, page_count_early)
 
         # -- Tabellen aus json_content --
         tables: list[TableBlock] = []
@@ -238,17 +431,6 @@ class DoclingExtractor:
             tables.append(
                 TableBlock(markdown=md, page=page_no, caption=caption_str)
             )
-
-        # -- Page-Map aus json_content texts --
-        page_elements: list[tuple[str, int | None]] = []
-        for txt in jc.get("texts", []):
-            text = txt.get("text", "")
-            if not text.strip():
-                continue
-            prov = txt.get("prov", [])
-            pg = prov[0]["page_no"] if prov else None
-            page_elements.append((text, pg))
-        page_map = build_page_map(body_md, page_elements)
 
         # -- Metadaten --
         pages_dict = jc.get("pages", {})
@@ -340,11 +522,23 @@ class DoclingExtractor:
             Fertiges ExtractedDoc.
         """
         body_md = docling_doc.export_to_markdown()
+        # ALLERERSTER Schritt: inline Data-URIs entfernen
+        body_md = _strip_inline_data_uris(body_md, path)
+        # Qualitaetspruefung VOR dem Cleaning: garbled Text erkennen
+        _check_text_quality(body_md, path)
         if self._settings.boilerplate_clean:
             body_md = clean_boilerplate(body_md)
+        # Leerer-Body-Guard: NACH Cleaning (Boilerplate kann viel Text
+        # entfernen, erst danach laesst sich beurteilen ob Inhalt bleibt)
+        _check_body_not_empty(body_md, path, _count_pages(docling_doc))
         # Page-Map NACH dem Cleaning bauen (Offsets muessen zum finalen
-        # Body passen; entfernte Kopf-/Fusszeilen-Elemente matchen nicht)
-        page_map = build_page_map(body_md, _page_elements(docling_doc))
+        # Body passen; entfernte Kopf-/Fusszeilen-Elemente matchen nicht).
+        # Needle-Text wird mit denselben Inline-Transformationen normalisiert
+        # (Zitations-Entfernung), damit er im bereinigten Body gefunden wird.
+        page_map = build_page_map(
+            body_md, _page_elements(docling_doc),
+            normalize=remove_inline_citations,
+        )
         tables = _extract_tables(docling_doc)
         source_hash = _compute_path_hash(path)
         figures = extract_figures_local(
@@ -394,8 +588,8 @@ class DoclingExtractor:
             import pymupdf4llm
         except ImportError as exc:
             raise ExtractionError(
-                f"pymupdf4llm nicht installiert -- Fallback fuer "
-                f"{path.name} nicht moeglich"
+                f"pymupdf4llm nicht installiert — Fallback für "
+                f"{path.name} nicht möglich"
             ) from exc
 
         logger.info("pymupdf4llm_fallback_start", path=str(path))
@@ -416,9 +610,25 @@ class DoclingExtractor:
                 error=str(exc),
             )
             raise ExtractionError(
-                f"Auch pymupdf4llm-Fallback fehlgeschlagen fuer "
+                f"Auch pymupdf4llm-Fallback fehlgeschlagen für "
                 f"{path.name}: {exc}"
             ) from exc
+
+        # Qualitaetspruefung VOR dem Cleaning: garbled Text erkennen
+        # (gilt auch fuer den pymupdf-Fallback, nicht nur Docling)
+        raw_body = "\n".join(pages)
+        try:
+            _check_text_quality(raw_body, path)
+        except PartialExtractionError:
+            logger.error(
+                "pymupdf4llm_also_garbled",
+                path=str(path),
+            )
+            raise ExtractionError(
+                f"Auch pymupdf4llm liefert unlesbaren Text für "
+                f"{path.name}. Mögliche Ursache: kaputte "
+                f"Font-Encodings im PDF. Bitte manuell prüfen."
+            )
 
         if self._settings.boilerplate_clean:
             # Kopf-/Fusszeilen wiederholen sich je Seite — erst ueber
@@ -470,6 +680,120 @@ class DoclingExtractor:
 
 
 # -- module-level helpers -------------------------------------------------
+
+
+def _log_memory_aware_error(path: Path, exc: Exception) -> None:
+    """Loggt OCR-Fehler mit ehrlicher Ursachenangabe.
+
+    Unterscheidet Speichermangel (std::bad_alloc, ONNXRuntimeError)
+    von echten Extraktionsfehlern und loggt entsprechend.
+    """
+    msg = str(exc).lower()
+    is_memory = "bad_alloc" in msg or "bad allocation" in msg
+    if is_memory:
+        logger.error(
+            "ocr_retry_failed_memory",
+            path=str(path),
+            hint=(
+                "OCR wegen Speichermangel fehlgeschlagen — "
+                "Retry über Docling Serve oder auf Maschine "
+                "mit mehr RAM."
+            ),
+        )
+    else:
+        logger.warning(
+            "ocr_retry_failed",
+            path=str(path),
+            error=str(exc),
+        )
+
+
+def _quick_page_count(path: Path) -> int | None:
+    """Ermittelt die Seitenzahl eines PDFs ohne ONNX-Modelle.
+
+    Nutzt pymupdf zum schnellen Öffnen (kein Rendering, kein OCR).
+    Gibt None zurück wenn pymupdf nicht verfügbar ist.
+    """
+    try:
+        import pymupdf
+    except ImportError:
+        return None
+    try:
+        doc = pymupdf.open(str(path))
+        count = len(doc)
+        doc.close()
+        return count
+    except Exception:
+        return None
+
+
+def _strip_inline_data_uris(body_md: str, path: Path) -> str:
+    """Entfernt inline Data-URI-Bilder aus dem Markdown-Body.
+
+    Docling Serve bettet bei ``image_export_mode=embedded`` Bilder als
+    ``![...](data:image/...;base64,...)`` in den Markdown ein. Diese
+    sind redundant (Bilder werden separat via Figure-Pipeline extrahiert)
+    und muessen VOR dem Chunking entfernt werden.
+
+    Args:
+        body_md: Roher Markdown-Body.
+        path: Dateipfad (fuer Logging).
+
+    Returns:
+        Body-Markdown ohne inline Data-URIs.
+    """
+    stripped = _INLINE_DATA_URI_RE.sub("", body_md)
+    removed = len(body_md) - len(stripped)
+    if removed > 0:
+        logger.info(
+            "inline_data_uris_stripped",
+            path=str(path),
+            original_chars=len(body_md),
+            stripped_chars=len(stripped),
+            removed_chars=removed,
+            removed_pct=round(removed / len(body_md) * 100, 1),
+        )
+    return stripped.strip()
+
+
+def _check_body_not_empty(
+    body_md: str,
+    path: Path,
+    page_count: int | None,
+) -> None:
+    """Prueft ob nach dem Data-URI-Stripping genuegend Text uebrig ist.
+
+    Bei mehrseitigen Dokumenten mit weniger als ``_MIN_BODY_CHARS_AFTER_STRIP``
+    Zeichen ist der Body effektiv leer (kein extrahierbarer Text).
+
+    Args:
+        body_md: Body-Markdown NACH dem Strippen von inline Data-URIs.
+        path: Dateipfad (fuer Logging).
+        page_count: Seitenzahl (wenn verfuegbar).
+
+    Raises:
+        PartialExtractionError: Body zu kurz / leer.
+    """
+    if len(body_md) >= _MIN_BODY_CHARS_AFTER_STRIP:
+        return
+    # Einzel-Seiten-Dokumente koennen legitim kurz sein
+    if page_count is not None and page_count <= 2:
+        return
+    logger.warning(
+        "empty_body_after_strip",
+        path=str(path),
+        body_chars=len(body_md),
+        threshold=_MIN_BODY_CHARS_AFTER_STRIP,
+        page_count=page_count,
+    )
+    raise PartialExtractionError(
+        f"Body nach Data-URI-Stripping nahezu leer fuer "
+        f"{path.name}: nur {len(body_md)} Zeichen "
+        f"(Schwelle: {_MIN_BODY_CHARS_AFTER_STRIP}). "
+        f"PDF vermutlich scan-basiert — OCR-Retry erforderlich.",
+        failed_pages=0,
+        total_pages=page_count or 0,
+    )
 
 
 def _check_conversion_integrity(result: Any, path: Path) -> None:
@@ -526,6 +850,60 @@ def _check_conversion_integrity(result: Any, path: Path) -> None:
         )
 
 
+def _check_text_quality(body_md: str, path: Path) -> None:
+    """Prueft ob der extrahierte Text lesbar ist.
+
+    Erkennt garbled-Text von kaputten Font-Encodings (Dingbats,
+    Symbol-Fonts, eingebettete Binaerdaten). Wirft
+    ``PartialExtractionError`` wenn zu wenig lesbare Zeichen.
+
+    Args:
+        body_md: Extrahierter Body-Markdown.
+        path: Original-Dateipfad (fuer Logging).
+
+    Raises:
+        PartialExtractionError: Text-Qualitaet unter Schwelle.
+    """
+    if not body_md or len(body_md) < 200:
+        return  # Zu kurz fuer sinnvolle Analyse
+
+    # Stichprobe: erste 5000 Zeichen (repraesentativ, schnell)
+    sample = body_md[:5000]
+    total = len(sample)
+    # "Lesbar" = ASCII-Buchstaben, Ziffern, gaengige Interpunktion,
+    # Whitespace, deutsche Umlaute/SZ, gaengige Sonderzeichen
+    readable = sum(
+        1 for ch in sample
+        if ch.isalnum()
+        or ch.isspace()
+        or ch in ".,;:!?-–—()[]{}\"'/\\@#$%&*+=<>|~^`_äöüÄÖÜß€°§"
+    )
+    ratio = readable / total if total > 0 else 1.0
+
+    if ratio < _MIN_READABLE_RATIO:
+        logger.warning(
+            "docling_garbled_text_detected",
+            path=str(path),
+            readable_ratio=round(ratio, 3),
+            threshold=_MIN_READABLE_RATIO,
+            sample_first_100=sample[:100],
+        )
+        raise PartialExtractionError(
+            f"Garbled Text erkannt in {path.name}: "
+            f"nur {ratio:.0%} lesbare Zeichen "
+            f"(Schwelle: {_MIN_READABLE_RATIO:.0%}). "
+            f"Moegliche Ursache: kaputte Font-Encodings.",
+            failed_pages=0,
+            total_pages=0,
+        )
+
+    logger.debug(
+        "text_quality_ok",
+        path=str(path),
+        readable_ratio=round(ratio, 3),
+    )
+
+
 def _validate_path(path: Path) -> None:
     """Prueft Existenz und unterstuetztes Format.
 
@@ -572,6 +950,15 @@ def _build_converter(
         do_ocr=do_ocr,
         ocr_options=OcrAutoOptions(lang=["de", "en"]),
         generate_picture_images=settings.docling_do_figures,
+        # Speicher-optimiert: Seiten einzeln verarbeiten und
+        # Queue-Puffer klein halten. Docling cached Page-Images
+        # über 5 Pipeline-Stufen hinweg — queue_max_size=100
+        # (Default) kann >100 MB an Bitmaps aufstauen.
+        layout_batch_size=1,
+        ocr_batch_size=1,
+        table_batch_size=1,
+        queue_max_size=4,
+        accelerator_options=AcceleratorOptions(num_threads=2),
     )
     return DocumentConverter(
         format_options={

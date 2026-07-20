@@ -21,6 +21,16 @@ logger = structlog.get_logger(__name__)
 
 _DATA_URI_RE = re.compile(r"^data:[^;]+;base64,(.+)$", re.DOTALL)
 
+# Mindestgroesse fuer Abbildungen (Pixel). Bilder unter diesen
+# Schwellen sind typischerweise Logos, Unterschriften, Icons,
+# dekorative Grafiken oder BTU-Standardelemente.
+_MIN_WIDTH = 150
+_MIN_HEIGHT = 150
+
+# Seitenverhaeltnis-Limits: extrem schmale/breite Bilder sind
+# Header-Leisten, Trennlinien oder Footer-Banner.
+_MAX_ASPECT_RATIO = 6.0  # breite/hoehe oder hoehe/breite
+
 
 def save_figures(
     images_with_meta: list[dict[str, Any]],
@@ -51,13 +61,26 @@ def save_figures(
     fig_dir.mkdir(parents=True, exist_ok=True)
 
     figures: list[FigureBlock] = []
+    skipped = 0
     for item in images_with_meta:
         idx = item.get("fig_index", 0)
         image_bytes = item.get("image_bytes")
         if not image_bytes:
             continue
+        # Groessen-Filter: Logos, Unterschriften, Icons herausfiltern
+        if not _passes_size_filter(image_bytes, idx):
+            skipped += 1
+            continue
         filename = f"fig_{idx:03d}.png"
         img_path = fig_dir / filename
+        # Deaktivierte Abbildung nicht ueberschreiben (User-Entscheidung
+        # aus dem Dokument-Viewer respektieren)
+        disabled_path = fig_dir / f"fig_{idx:03d}.disabled"
+        if disabled_path.exists():
+            logger.debug(
+                "figure_skip_disabled", index=idx, path=str(disabled_path),
+            )
+            continue
         try:
             img_path.write_bytes(image_bytes)
         except Exception as exc:
@@ -77,9 +100,58 @@ def save_figures(
         "figures_saved",
         total=len(images_with_meta),
         saved=len(figures),
+        skipped_too_small=skipped,
         directory=str(fig_dir),
     )
     return figures
+
+
+def _passes_size_filter(image_bytes: bytes, idx: int) -> bool:
+    """Prueft ob ein Bild die Mindestgroesse fuer inhaltliche Abbildungen hat.
+
+    Filtert Logos, Unterschriften, Icons, Trennlinien und andere
+    dekorative Grafiken anhand von Mindestabmessungen und
+    Seitenverhaeltnis.
+
+    Args:
+        image_bytes: Rohe Bilddaten (PNG).
+        idx: Bild-Index (fuer Logging).
+
+    Returns:
+        True wenn das Bild gross genug ist, False wenn zu klein.
+    """
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes))
+        w, h = img.size
+    except Exception:
+        # Kann Groesse nicht bestimmen — sicherheitshalber behalten
+        return True
+
+    if w < _MIN_WIDTH or h < _MIN_HEIGHT:
+        logger.debug(
+            "figure_too_small",
+            index=idx,
+            width=w,
+            height=h,
+            min_width=_MIN_WIDTH,
+            min_height=_MIN_HEIGHT,
+        )
+        return False
+
+    # Extrem schmale/breite Bilder (Header-Leisten, Trennlinien)
+    aspect = max(w, h) / max(min(w, h), 1)
+    if aspect > _MAX_ASPECT_RATIO:
+        logger.debug(
+            "figure_extreme_aspect_ratio",
+            index=idx,
+            width=w,
+            height=h,
+            aspect_ratio=round(aspect, 1),
+        )
+        return False
+
+    return True
 
 
 def extract_figures_local(

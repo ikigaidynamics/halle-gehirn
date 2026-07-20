@@ -21,7 +21,11 @@ from halle_gehirn.pipeline.chunk_helpers import (
     split_sections,
     split_table,
 )
-from halle_gehirn.pipeline.sentence_splitter import Sentence, split_sentences
+from halle_gehirn.pipeline.sentence_splitter import (
+    Sentence,
+    merge_list_blocks,
+    split_sentences,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -64,6 +68,8 @@ class Chunk:
     page: int | None = None
     headings: list[str] = field(default_factory=list)
     is_table: bool = False
+    table_caption: str | None = None
+    table_context: str | None = None
     context_prefix: str | None = None
     figure_refs: list[str] = field(default_factory=list)
     figure_captions: list[str] = field(default_factory=list)
@@ -233,6 +239,7 @@ class MarkdownChunker:
     def _split_by_sentences(self, section: Section) -> list[Chunk]:
         """Teilt eine zu grosse Section an Satzgrenzen auf."""
         sentences = split_sentences(section.text)
+        sentences = merge_list_blocks(sentences, section.text)
         if not sentences:
             # Kein Satz erkannt — harter Fallback
             return self._hard_split_chunks(

@@ -36,6 +36,9 @@ projekt:
 
 # ── autor · Verfasser des Dokuments (Startbestand) ──
 autor:
+  schwier: "Philipp Schwier"
+  porsch: "Ronny Porsch"
+  shenghan: "Shenghan Gao"
   # Autoren werden per Manifest-Eintrag zugeordnet.
   # Slug = nachname (lowercase), Label = voller Name.
 

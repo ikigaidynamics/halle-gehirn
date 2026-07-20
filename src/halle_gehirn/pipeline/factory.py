@@ -7,16 +7,19 @@ an der Implementierungen an Protocols gebunden werden.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import structlog
 
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.generator.ollama_client import OllamaGenerator
 from halle_gehirn.governance.audit import StructlogAuditLogger
+from halle_gehirn.observability.retrieval_logger import RetrievalJsonlLogger
 from halle_gehirn.pipeline.stages.confidence import ConfidenceGate
 from halle_gehirn.pipeline.stages.grounding import FaithfulnessChecker
 from halle_gehirn.pipeline.stages.guardrails import PromptGuardrail
 from halle_gehirn.pipeline.stages.validation import CitationValidator
+from halle_gehirn.retrieval.query_rewriter import QueryRewriter
 from halle_gehirn.retrieval.query_transform import OllamaQueryTransformer
 from halle_gehirn.retrieval.retriever import HybridRetriever
 from halle_gehirn.retrieval.router import KeywordRouter
@@ -35,6 +38,7 @@ class QueryPipeline:
 
     retriever: HybridRetriever
     router: KeywordRouter
+    query_rewriter: QueryRewriter
     query_transformer: OllamaQueryTransformer
     generator: OllamaGenerator
     confidence_gate: ConfidenceGate
@@ -42,6 +46,7 @@ class QueryPipeline:
     validator: CitationValidator
     grounding_checker: FaithfulnessChecker
     audit_logger: StructlogAuditLogger
+    retrieval_logger: RetrievalJsonlLogger
     settings: Settings
 
 
@@ -65,6 +70,7 @@ def build_query_pipeline(
     pipeline = QueryPipeline(
         retriever=HybridRetriever(settings=s, router=router),
         router=router,
+        query_rewriter=QueryRewriter(settings=s),
         query_transformer=OllamaQueryTransformer(settings=s),
         generator=OllamaGenerator(settings=s),
         confidence_gate=ConfidenceGate(settings=s),
@@ -72,6 +78,9 @@ def build_query_pipeline(
         validator=CitationValidator(),
         grounding_checker=FaithfulnessChecker(settings=s),
         audit_logger=StructlogAuditLogger(),
+        retrieval_logger=RetrievalJsonlLogger(
+            log_dir=Path(s.retrieval_log_dir),
+        ),
         settings=s,
     )
     logger.info("query_pipeline_built")

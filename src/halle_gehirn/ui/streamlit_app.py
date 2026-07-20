@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import uuid
 from pathlib import Path
 
@@ -19,6 +20,8 @@ from halle_gehirn.config import get_settings
 from halle_gehirn.ui._display_helpers import clean_snippet
 from halle_gehirn.ui._filter_sidebar import render_filter_sidebar
 
+_SOURCE_REF_RE = re.compile(r"\[S(\d+)\]")
+
 _PUBLIC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "public"
 
 def _check_api_health(api_url: str) -> bool:
@@ -28,6 +31,20 @@ def _check_api_health(api_url: str) -> bool:
         return resp.status_code == 200
     except httpx.HTTPError:
         return False
+
+
+def _format_source_refs(text: str) -> str:
+    """Wandelt [S1]/[S2]-Referenzen in hochgestellte Marker um."""
+    accent = get_settings().primary_color
+
+    def _repl(m: re.Match[str]) -> str:
+        num = m.group(1)
+        return (
+            f'<sup style="color:{accent}; font-weight:600;'
+            f' font-size:0.75em;">[S{num}]</sup>'
+        )
+
+    return _SOURCE_REF_RE.sub(_repl, text)
 
 
 _COLORS: dict[str, str] = {
@@ -108,7 +125,10 @@ def main() -> None:
     # Chat-History anzeigen
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+            st.markdown(
+                _format_source_refs(msg["content"]),
+                unsafe_allow_html=True,
+            )
             if msg.get("confidence"):
                 _render_confidence(msg["confidence"])
             if msg.get("sources"):
@@ -197,7 +217,10 @@ def _stream_response(
 
                 if data["type"] == "token":
                     full_answer += data["content"]
-                    placeholder.markdown(full_answer + "...")
+                    placeholder.markdown(
+                        _format_source_refs(full_answer) + "...",
+                        unsafe_allow_html=True,
+                    )
                 elif data["type"] == "status":
                     # Keepalive — Verbindung halten, nichts anzeigen
                     pass
@@ -210,7 +233,9 @@ def _stream_response(
                     if final and final != full_answer:
                         full_answer = final
 
-        placeholder.markdown(full_answer)
+        placeholder.markdown(
+            _format_source_refs(full_answer), unsafe_allow_html=True,
+        )
     except httpx.ConnectError:
         api_url = get_settings().api_base_url
         placeholder.error(
@@ -242,58 +267,74 @@ def _render_sources(sources: list[dict[str, str]]) -> None:
     """Zeigt Quellen mit Dateipfad und Snippet an."""
     if not sources:
         return
+    accent = get_settings().primary_color
     with st.expander("Quellen", expanded=False):
+        last_titel = ""
         for src in sources:
             titel = src.get("titel", "Unbekannt")
             url = src.get("url")
             datei = src.get("datei", "")
             snippet = src.get("snippet", "")
-            score = src.get("score", 0)
             breadcrumb = src.get("breadcrumb", "")
             page = src.get("page")
+            source_id = src.get("id", "")
 
-            # Titel + Score
-            header = f"**[{titel}]({url})**" if url else f"**{titel}**"
-            header += f" (Score: {score})"
-            st.markdown(header)
+            # Ebenda bei wiederholtem Titel
+            display_titel = titel
+            if titel == last_titel and titel != "Unbekannt":
+                display_titel = "ebd."
+            last_titel = titel
 
-            # Datei-Info
+            # Source-ID Badge + Titel
+            badge = (
+                f'<span style="display:inline-block; background:{accent};'
+                f" color:#fff; border-radius:3px; padding:1px 6px;"
+                f' font-size:0.8em; font-weight:700; margin-right:6px;">'
+                f"{html.escape(source_id)}</span>"
+                if source_id else ""
+            )
+            titel_html = html.escape(display_titel)
+            st.markdown(
+                f"{badge}**{titel_html}**", unsafe_allow_html=True,
+            )
+
+            # Fundstelle
             info_parts: list[str] = []
-            if datei:
-                info_parts.append(f"`data/manual/{datei}`")
             if page:
-                info_parts.append(f"Seite {page}")
+                info_parts.append(f"S. {page}")
             if breadcrumb:
                 info_parts.append(breadcrumb)
+            if datei and display_titel != "ebd.":
+                info_parts.append(f"`{datei}`")
             if info_parts:
                 st.caption(" · ".join(info_parts))
 
-            # Snippet (bereinigt, Fliesstext ohne Ueberschriften)
+            # Snippet
             if snippet:
                 cleaned = clean_snippet(snippet, strip_headings=True)
                 escaped = html.escape(cleaned)
-                accent = get_settings().primary_color
                 st.markdown(
-                    f'<div style="white-space: pre-wrap; font-size: 0.9em;'
-                    f" color: #555; background: #f8f9fa; padding: 10px;"
-                    f" border-radius: 6px; border-left: 3px solid {accent};"
-                    f' max-height: 400px; overflow-y: auto;">'
+                    f'<div style="background:#f8f9fa; padding:10px 12px;'
+                    f" border-radius:6px; border-left:3px solid {accent};"
+                    f" margin:4px 0 8px 0; font-size:0.9em; color:#444;"
+                    f' line-height:1.5; white-space:pre-wrap;">'
                     f"{escaped}</div>",
                     unsafe_allow_html=True,
                 )
 
-            # Abbildungen anzeigen (falls vorhanden)
+            # Abbildungen
             figure_refs: list[str] = src.get("figure_refs") or []  # type: ignore[assignment]
             figure_captions: list[str] = src.get("figure_captions") or []  # type: ignore[assignment]
             if figure_refs:
                 figures_dir = Path(get_settings().figures_dir)
                 for idx, ref in enumerate(figure_refs):
                     img_path = figures_dir / ref
-                    cap = figure_captions[idx] if idx < len(figure_captions) else None
+                    cap = (
+                        figure_captions[idx]
+                        if idx < len(figure_captions) else None
+                    )
                     if img_path.is_file():
                         st.image(str(img_path), caption=cap, width=400)
-                    elif cap:
-                        st.caption(f"[Bild fehlt] {cap}")
 
             st.divider()
 

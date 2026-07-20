@@ -15,15 +15,19 @@ import structlog
 from halle_gehirn.config import get_settings
 
 
-def _ensure_utf8_stdout() -> io.TextIOWrapper:
-    """Stellt sicher, dass stdout UTF-8 verwendet (Windows-Fix).
+def _ensure_utf8_streams() -> io.TextIOWrapper:
+    """Stellt sicher, dass stdout und stderr UTF-8 verwenden (Windows-Fix).
 
-    Unter Windows nutzt sys.stdout standardmaessig cp1252, was bei
-    Unicode-Zeichen aus PDF-Extrakten (Formeln, Sonderzeichen) zu
-    ``'charmap' codec can't encode`` Fehlern fuehrt.
+    Unter Windows nutzen sys.stdout/sys.stderr standardmaessig cp1252,
+    was bei Unicode-Zeichen aus PDF-Extrakten (Formeln, Sonderzeichen)
+    zu ``'charmap' codec can't encode`` Fehlern fuehrt.
     """
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     return sys.stdout
 
 
@@ -36,7 +40,7 @@ def configure_logging(*, dev: bool = True) -> None:
     settings = get_settings()
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
 
-    stream = _ensure_utf8_stdout()
+    stream = _ensure_utf8_streams()
     logging.basicConfig(format="%(message)s", stream=stream, level=level)
 
     shared: list[structlog.types.Processor] = [

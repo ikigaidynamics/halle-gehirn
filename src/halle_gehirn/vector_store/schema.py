@@ -122,6 +122,7 @@ class ChunkPayload(BaseModel):
     lang: str = "de"
     page: int | None = None
     table_ref: str | None = None
+    table_context: str | None = None
     chunk_index: int
     # None bei Tabellen-Chunks (keine echten Body-Offsets)
     char_start: int | None = None
@@ -143,6 +144,9 @@ class ChunkPayload(BaseModel):
     projekt: list[str] = Field(default_factory=list)
     ansprechperson: list[str] = Field(default_factory=list)
     autor: list[str] = Field(default_factory=list)
+    # — Dokument-Metadaten (Glossar, Zitationen) —
+    glossar: dict[str, str] = Field(default_factory=dict)
+    citations: dict[str, str] = Field(default_factory=dict)
     # — Abbildungen —
     figure_refs: list[str] = Field(default_factory=list)
     figure_captions: list[str] = Field(default_factory=list)

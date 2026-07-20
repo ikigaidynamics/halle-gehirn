@@ -271,3 +271,75 @@ class TestBuildChunkPayload:
         assert "mensch_roboter_kollaboration" in [t.value for t in payload.thema]
         assert "kuka_industrieroboter" in payload.anlage
         assert "berger" in payload.ansprechperson
+
+    def test_payload_with_glossar_and_citations(self) -> None:
+        """ChunkPayload traegt Glossar und Citations als Dokument-Metadaten."""
+        from halle_gehirn.pipeline.ingest import ManifestEntry
+
+        chunk = Chunk(
+            text="Die MRK nutzt TCP-Koordinaten.",
+            char_start=0,
+            char_end=30,
+            chunk_index=0,
+        )
+        entry = ManifestEntry(
+            datei="test.pdf",
+            titel="Test",
+            doc_type="abschlussarbeit",
+            bereich=["forschung"],
+            herkunft="lehrstuhl_at",
+            grad="master",
+        )
+        glossar = {"MRK": "Mensch-Roboter-Kollaboration", "TCP": "Tool Center Point"}
+        citations = {"1": "Mueller, 2023.", "2": "Schmidt, 2022."}
+        payload = build_chunk_payload(
+            chunk, entry, source_hash="abc", source_path="/t.pdf",
+            glossar=glossar, citations=citations,
+        )
+        assert payload.glossar == glossar
+        assert payload.citations == citations
+
+    def test_payload_without_glossar_defaults_empty(self) -> None:
+        """Ohne Glossar/Citations werden leere Dicts gesetzt."""
+        from halle_gehirn.pipeline.ingest import ManifestEntry
+
+        chunk = Chunk(
+            text="Text.", char_start=0, char_end=5, chunk_index=0,
+        )
+        entry = ManifestEntry(
+            datei="test.pdf",
+            titel="Test",
+            doc_type="handbuch",
+            bereich=["forschung"],
+            herkunft="lehrstuhl_at",
+        )
+        payload = build_chunk_payload(
+            chunk, entry, source_hash="abc", source_path="/t.pdf",
+        )
+        assert payload.glossar == {}
+        assert payload.citations == {}
+
+    def test_payload_with_table_context(self) -> None:
+        """table_context wird in den suchbaren Text eingebettet."""
+        from halle_gehirn.pipeline.ingest import ManifestEntry
+
+        chunk = Chunk(
+            text="| A | B |\n|---|---|\n| 1 | 2 |",
+            char_start=0,
+            char_end=28,
+            chunk_index=0,
+            is_table=True,
+            table_context="Tabelle 3 zeigt die Messwerte.",
+        )
+        entry = ManifestEntry(
+            datei="test.pdf",
+            titel="Test",
+            doc_type="handbuch",
+            bereich=["forschung"],
+            herkunft="lehrstuhl_at",
+        )
+        payload = build_chunk_payload(
+            chunk, entry, source_hash="abc", source_path="/t.pdf",
+        )
+        assert "Tabelle 3 zeigt die Messwerte." in payload.text
+        assert payload.table_context == "Tabelle 3 zeigt die Messwerte."

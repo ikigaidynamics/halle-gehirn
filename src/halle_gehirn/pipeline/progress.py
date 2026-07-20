@@ -35,6 +35,14 @@ class ProgressEvent:
     figure_paths: list[str] = field(default_factory=list)
     elapsed_s: float = 0.0
 
+    # Erweiterte Metadaten fuer detailliertere Fortschrittsanzeige
+    body_chars: int = 0
+    tables_count: int = 0
+    chunks_before_filter: int = 0
+    extraction_backend: str | None = None
+    ocr_retry: bool = False
+    file_size_bytes: int = 0
+
 
 ProgressCallback = Callable[[ProgressEvent], None] | None
 """Optionaler Callback fuer Fortschrittsereignisse."""

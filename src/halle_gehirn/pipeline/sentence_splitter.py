@@ -3,6 +3,9 @@
 Zerlegt deutschen Fliesstext in Saetze unter Beruecksichtigung gaengiger
 deutscher Abkuerzungen (z.B., d.h., Prof., Dr.) und akademischer Titel,
 damit diese nicht faelschlich als Satzenden erkannt werden.
+
+``merge_list_blocks`` fasst aufeinanderfolgende Listen-Items zu atomaren
+Bloecken zusammen, damit der Chunker Aufzaehlungen nicht auftrennt.
 """
 from __future__ import annotations
 
@@ -112,6 +115,66 @@ def _split_raw(text: str) -> list[tuple[int, int]]:
     if prev < len(text):
         spans.append((prev, len(text)))
     return spans
+
+
+# ── Listen-Atomizitaet ──
+
+# Listen-Marker: - * + 1. 2) a) A. (1) (a) etc.
+_LIST_MARKER_RE = re.compile(
+    r"^(?:"
+    r"[\-\*\+]\s"           # - * +
+    r"|\d+[.)]\s"           # 1. 2) 12.
+    r"|[a-zA-Z][.)]\s"      # a) b. A) B.
+    r"|\([a-zA-Z0-9]+\)\s"  # (1) (a) (A)
+    r")",
+)
+
+
+def merge_list_blocks(
+    sentences: list[Sentence],
+    original: str,
+) -> list[Sentence]:
+    """Fasst aufeinanderfolgende Listen-Saetze zu atomaren Bloecken zusammen.
+
+    Listen-Items (Zeilen mit ``-``, ``*``, ``1.``, ``a)`` etc.) werden als
+    Einheit behalten, damit der Chunker sie nicht mitten in einer Aufzaehlung
+    aufteilt.
+
+    Args:
+        sentences: Saetze aus ``split_sentences()``.
+        original: Originaltext (fuer korrekte Offset-Rekonstruktion).
+
+    Returns:
+        Neue Liste: Konsekutive Listen-Saetze zusammengefasst.
+    """
+    if not sentences:
+        return []
+    result: list[Sentence] = []
+    i = 0
+    while i < len(sentences):
+        if _is_list_item(sentences[i].text):
+            block_start = i
+            while i < len(sentences) and _is_list_item(sentences[i].text):
+                i += 1
+            block = sentences[block_start:i]
+            if len(block) == 1:
+                result.append(block[0])
+            else:
+                merged_text = original[block[0].start : block[-1].end]
+                result.append(Sentence(
+                    text=merged_text,
+                    start=block[0].start,
+                    end=block[-1].end,
+                ))
+        else:
+            result.append(sentences[i])
+            i += 1
+    return result
+
+
+def _is_list_item(text: str) -> bool:
+    """Prueft ob ein Satz mit einem Listen-Marker beginnt."""
+    return bool(_LIST_MARKER_RE.match(text.lstrip()))
 
 
 def _to_sentences(

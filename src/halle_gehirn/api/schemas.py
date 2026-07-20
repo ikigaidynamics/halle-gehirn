@@ -37,6 +37,18 @@ class Source(BaseModel):
     breadcrumb: str = ""
     figure_refs: list[str] = Field(default_factory=list)
     figure_captions: list[str] = Field(default_factory=list)
+    bereich: list[str] = Field(default_factory=list)
+    herkunft: str = ""
+    quelltyp: str = ""
+    vertraulichkeit: str = ""
+    status: str = ""
+    jahr: int | None = None
+    thema: list[str] = Field(default_factory=list)
+    anlage: list[str] = Field(default_factory=list)
+    projekt: list[str] = Field(default_factory=list)
+    ansprechperson: list[str] = Field(default_factory=list)
+    autor: list[str] = Field(default_factory=list)
+    grad: str = ""
 
 
 class ChatResponse(BaseModel):

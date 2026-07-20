@@ -23,13 +23,16 @@ import yaml
 
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.extraction.base import ExtractedDoc, ExtractionError, Extractor
+from halle_gehirn.extraction.citation_index import parse_citations
 from halle_gehirn.extraction.docling_extractor import DoclingExtractor
+from halle_gehirn.extraction.glossar import parse_glossar
 from halle_gehirn.extraction.plaintext_extractor import PlaintextExtractor
 from halle_gehirn.pipeline.chunk_filter import filter_chunks
 from halle_gehirn.pipeline.chunker import Chunk, MarkdownChunker
 from halle_gehirn.pipeline.context_enricher import OllamaContextEnricher
 from halle_gehirn.pipeline.figure_linker import link_figures_to_chunks
 from halle_gehirn.pipeline.progress import ProgressCallback, ProgressEvent
+from halle_gehirn.pipeline.table_linker import link_tables_to_chunks
 from halle_gehirn.vector_store.schema import (
     Bereich,
     ChunkPayload,
@@ -56,6 +59,10 @@ class IngestError(Exception):
 
 class VokabularValidationError(IngestError):
     """Unbekannter Slug in manifest.yaml (nicht in vokabular.yaml)."""
+
+
+class ChunkExplosionError(IngestError):
+    """Dokument erzeugt absurd viele Chunks (Plausibilitaets-Abbruch)."""
 
 
 @dataclass
@@ -304,6 +311,9 @@ def build_chunk_payload(
     entry: ManifestEntry,
     source_hash: str,
     source_path: str,
+    *,
+    glossar: dict[str, str] | None = None,
+    citations: dict[str, str] | None = None,
 ) -> ChunkPayload:
     """Baut ein ChunkPayload aus Chunk + Manifest-Eintrag.
 
@@ -312,16 +322,20 @@ def build_chunk_payload(
         entry: Zugehoeriger Manifest-Eintrag.
         source_hash: SHA256 der Quelldatei.
         source_path: Pfad zur Quelldatei.
+        glossar: Abkuerzungs-Glossar des Dokuments.
+        citations: Zitations-Index des Dokuments.
 
     Returns:
         Vollstaendiges ChunkPayload.
     """
     source_type = Path(entry.datei).suffix.lstrip(".").lower()
     # text_raw = reiner Chunk-Text (unveraendert)
-    # text = suchbarer Text: context_prefix + chunk.text + figure captions
+    # text = suchbarer Text: context_prefix + chunk.text + table_context + captions
     text_for_embedding = chunk.text
     if chunk.context_prefix:
         text_for_embedding = f"{chunk.context_prefix}\n\n{chunk.text}"
+    if chunk.table_context:
+        text_for_embedding = f"{text_for_embedding}\n\n{chunk.table_context}"
     if chunk.figure_captions:
         caption_block = "\n".join(chunk.figure_captions)
         text_for_embedding = f"{text_for_embedding}\n\n{caption_block}"
@@ -334,6 +348,7 @@ def build_chunk_payload(
         lang="de",
         page=chunk.page,
         table_ref=f"table_{chunk.chunk_index}" if chunk.is_table else None,
+        table_context=chunk.table_context,
         chunk_index=chunk.chunk_index,
         # Tabellen-Chunks haben keine echten Body-Offsets (der Chunker
         # setzt lokal 0..len) — None statt irrefuehrender Werte
@@ -354,6 +369,8 @@ def build_chunk_payload(
         projekt=entry.projekt,
         ansprechperson=entry.ansprechperson,
         autor=entry.autor,
+        glossar=glossar or {},
+        citations=citations or {},
         figure_refs=chunk.figure_refs,
         figure_captions=chunk.figure_captions,
         vertraulichkeit=Vertraulichkeit(entry.vertraulichkeit),
@@ -371,6 +388,9 @@ class _PreparedDoc:
     path: str
     doc: ExtractedDoc
     chunks: list[Chunk]
+    glossar: dict[str, str] = field(default_factory=dict)
+    citations: dict[str, str] = field(default_factory=dict)
+    chunks_before_filter: int = 0
 
 
 def run_ingest(
@@ -450,7 +470,10 @@ def run_ingest(
     all_payloads: list[ChunkPayload] = []
     for prep in prepared:
         payloads = [
-            build_chunk_payload(chunk, prep.entry, prep.source_hash, prep.path)
+            build_chunk_payload(
+                chunk, prep.entry, prep.source_hash, prep.path,
+                glossar=prep.glossar, citations=prep.citations,
+            )
             for chunk in prep.chunks
         ]
         all_payloads.extend(payloads)
@@ -541,6 +564,7 @@ def _emit_chunk_progress(
 ) -> None:
     """Emittiert ein Fortschrittsereignis nach dem Chunking."""
     chunks = prep.chunks
+    doc = prep.doc
     # Zufaelliger Sample-Chunk
     sample: Chunk | None = None
     if chunks:
@@ -550,8 +574,12 @@ def _emit_chunk_progress(
     body_count = len(chunks) - table_count
     strategy = f"{body_count} Body + {table_count} Tabellen"
     # Abbildungen
-    fig_count = len(prep.doc.figures)
-    fig_paths = [f.image_path for f in prep.doc.figures if f.image_path]
+    fig_count = len(doc.figures)
+    fig_paths = [f.image_path for f in doc.figures if f.image_path]
+    # Extraktions-Metadaten
+    backend = doc.meta.get("extraction_backend", "docling_local")
+    ocr_retry = doc.meta.get("ocr_retry") == "true"
+    file_size = int(doc.meta.get("file_size_bytes", 0))
 
     cb(ProgressEvent(
         phase="chunk",
@@ -569,6 +597,12 @@ def _emit_chunk_progress(
         figures_count=fig_count,
         figure_paths=fig_paths[:5],
         elapsed_s=time.monotonic() - t0,
+        body_chars=len(doc.body_md),
+        tables_count=len(doc.tables),
+        chunks_before_filter=prep.chunks_before_filter,
+        extraction_backend=backend,
+        ocr_retry=ocr_retry,
+        file_size_bytes=file_size,
     ))
 
 
@@ -624,6 +658,10 @@ def _prepare_entry(
     # Kuratierter Manifest-Titel ist die Quelle der Wahrheit (wie im
     # ManualLoader-Fluss) — wichtig u.a. fuer den Kontext-Prompt.
     doc.title = entry.titel
+    # Glossar + Zitations-Index VOR dem Chunking extrahieren (die Sections
+    # werden spaeter vom Filter gedroppt, aber die Daten sind bereits gesichert)
+    glossar = parse_glossar(doc.body_md)
+    citations = parse_citations(doc.body_md)
     logger.info(
         "ingest_doc_extracted",
         datei=entry.datei,
@@ -633,15 +671,73 @@ def _prepare_entry(
         source_type=doc.source_type,
     )
     chunks: list[Chunk] = chunker.chunk(doc, doc_type=entry.doc_type)
+    chunks_before_filter = len(chunks)
     chunks = filter_chunks(chunks, doc_type=entry.doc_type, settings=settings)
+    _check_chunk_plausibility(chunks, doc, entry.datei, settings)
     link_figures_to_chunks(chunks, doc.figures)
+    _link_table_context(chunks, doc)
     return _PreparedDoc(
         entry=entry,
         source_hash=source_hash,
         path=str(path),
         doc=doc,
         chunks=chunks,
+        glossar=glossar,
+        citations=citations,
+        chunks_before_filter=chunks_before_filter,
     )
+
+
+def _check_chunk_plausibility(
+    chunks: list[Chunk],
+    doc: ExtractedDoc,
+    datei: str,
+    settings: Settings,
+) -> None:
+    """Zweistufige Plausibilitaetspruefung der Chunk-Anzahl.
+
+    Stufe 1 (Warnung): Mehr als ``chunks_per_page_warn`` Chunks/Seite.
+    Stufe 2 (Abbruch): Mehr als ``chunks_per_page_abort`` Chunks/Seite
+    → ``ChunkExplosionError``, Dokument wird NICHT indexiert.
+
+    Args:
+        chunks: Gefilterte Chunks.
+        doc: Extrahiertes Dokument (fuer page_count).
+        datei: Dateiname (fuer Logging).
+        settings: Config mit Schwellenwerten.
+
+    Raises:
+        ChunkExplosionError: Chunk-Dichte ueber Abbruch-Schwelle.
+    """
+    page_count = doc.page_count
+    if not page_count or page_count < 1:
+        return  # Keine Seiteninfo → Check nicht moeglich
+    ratio = len(chunks) / page_count
+    if ratio > settings.chunks_per_page_abort:
+        logger.error(
+            "chunk_explosion_abort",
+            datei=datei,
+            chunks=len(chunks),
+            pages=page_count,
+            ratio=round(ratio, 1),
+            threshold=settings.chunks_per_page_abort,
+        )
+        raise ChunkExplosionError(
+            f"Chunk-Explosion für {datei}: "
+            f"{len(chunks)} Chunks bei {page_count} Seiten "
+            f"({ratio:.1f} Chunks/Seite, Abbruch-Schwelle: "
+            f"{settings.chunks_per_page_abort}). "
+            f"Dokument wird nicht indexiert."
+        )
+    if ratio > settings.chunks_per_page_warn:
+        logger.warning(
+            "chunk_density_high",
+            datei=datei,
+            chunks=len(chunks),
+            pages=page_count,
+            ratio=round(ratio, 1),
+            threshold=settings.chunks_per_page_warn,
+        )
 
 
 def _run_enrichment(prepared: list[_PreparedDoc], settings: Settings) -> None:
@@ -655,6 +751,25 @@ def _run_enrichment(prepared: list[_PreparedDoc], settings: Settings) -> None:
     except RuntimeError as exc:
         # z.B. bereits laufender Event-Loop im Aufrufer-Kontext
         logger.warning("context_enrichment_skipped", reason=str(exc))
+
+
+def _link_table_context(chunks: list[Chunk], doc: ExtractedDoc) -> None:
+    """Baut Caption-Zuordnung und verknuepft Tabellen mit Body-Kontext."""
+    table_chunks = [c for c in chunks if c.is_table]
+    if not table_chunks or not doc.tables:
+        return
+    # Jeder Tabellen-Chunk dem Quell-TableBlock zuordnen (ueber Header-Zeile)
+    captions: list[str | None] = []
+    for tc in table_chunks:
+        first_line = tc.text.split("\n")[0].strip()
+        matched_caption: str | None = None
+        for tbl in doc.tables:
+            tbl_first = tbl.markdown.strip().split("\n")[0].strip()
+            if first_line == tbl_first:
+                matched_caption = tbl.caption
+                break
+        captions.append(matched_caption)
+    link_tables_to_chunks(chunks, captions)
 
 
 async def _enrich_prepared(

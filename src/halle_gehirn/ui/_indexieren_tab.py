@@ -82,14 +82,12 @@ def render_indexieren_tab() -> None:
         file_exists = (_MANUAL_DIR / datei).exists()
 
         status_label = "indexiert" if is_indexed else "neu"
-        status_icon = "🟢" if is_indexed else "⚪"
         file_warn = " — Datei fehlt!" if not file_exists else ""
 
         # Default: neue Dokumente ausgewaehlt, indexierte nicht
         default = not is_indexed
         checked = st.checkbox(
-            f"{status_icon} {row['titel']}  "
-            f"(`{datei}`) [{status_label}]{file_warn}",
+            f"{row['titel']}  (`{datei}`) [{status_label}]{file_warn}",
             value=default,
             key=f"idx_{datei}",
         )
@@ -101,12 +99,19 @@ def render_indexieren_tab() -> None:
     n_new = sum(1 for d in selected_dateien if d not in indexed_dateien)
     n_reindex = n_selected - n_new
     if n_selected:
-        parts = [f"**{n_selected} Dokumente** ausgewählt"]
+        parts = [f"{n_selected} Dokument(e) ausgewählt"]
         if n_new:
-            parts.append(f"{n_new} neue")
+            parts.append(f"{n_new} neu")
         if n_reindex:
             parts.append(f"{n_reindex} erneut indexieren")
-        st.info(" — ".join(parts))
+        st.markdown(
+            '<div style="padding:11px 15px;border-radius:9px;'
+            "background:rgba(226,0,26,0.04);"
+            "border:1px solid rgba(226,0,26,0.14);"
+            'font-size:13px;color:#333;font-weight:500;">'
+            f'{" — ".join(parts)}</div>',
+            unsafe_allow_html=True,
+        )
     else:
         st.warning("Keine Dokumente ausgewählt.")
 
@@ -152,17 +157,34 @@ def _run_indexing(do_reset: bool, selected_dateien: set[str]) -> None:
     finally:
         root_logger.removeHandler(handler)
 
-    # Logs anzeigen
+    # Logs anzeigen (dunkler Log-Block)
     log_text = log_stream.getvalue()
     if log_text.strip():
         with st.expander("Detaillierte Logs", expanded=False):
-            st.code(log_text, language="text")
+            import html as html_mod
+            escaped = html_mod.escape(log_text)
+            # Syntax-Highlighting fuer Log-Level
+            escaped = escaped.replace(
+                "INFO", '<span class="log-info">INFO</span>',
+            )
+            escaped = escaped.replace(
+                "DONE", '<span class="log-done">DONE</span>',
+            )
+            escaped = escaped.replace(
+                "ERROR", '<span class="log-error">ERROR</span>',
+            )
+            st.markdown(
+                f'<div class="jv-log-block">{escaped}</div>',
+                unsafe_allow_html=True,
+            )
 
 
 def _run_indexing_inner(
     do_reset: bool, selected_dateien: set[str],
 ) -> None:
     """Kern-Logik des Indexierungslaufs mit detailliertem Fortschritt."""
+    import time
+
     # Schritt 1: Reset (optional)
     if do_reset:
         with st.spinner("Collection wird zurückgesetzt..."):
@@ -174,38 +196,61 @@ def _run_indexing_inner(
                 _show_connection_hint(exc)
                 return
 
-    # Schritt 2: Ingest (Extract + Chunk) mit Fortschritt
-    progress_bar = st.progress(0.0, text="Starte Extraktion...")
-    timing_placeholder = st.empty()
+    # Schritt 2: Ingest (Extract + Chunk) — im Thread mit Live-Status
+    status_container = st.status(
+        "Extraktion wird gestartet...", expanded=True,
+    )
+    progress_bar = st.progress(0.0)
     doc_container = st.container()
 
     # Fortschritts-State fuer den Callback
     last_doc: dict[str, str] = {}
+    start_time = time.monotonic()
 
     def _ingest_progress(event: ProgressEvent) -> None:
         """Callback: rendert Ingest-Fortschritt in Streamlit."""
-        if event.doc_total > 0:
-            pct = event.doc_index / event.doc_total
-            progress_bar.progress(
-                min(pct, 1.0),
-                text=(
-                    f"Dokument {event.doc_index}/{event.doc_total} "
-                    f"— {event.datei}"
-                ),
-            )
+        elapsed = time.monotonic() - start_time
 
-        # Timing / ETA
-        elapsed = event.elapsed_s
-        if event.doc_index > 0 and event.doc_total > 0:
-            per_doc = elapsed / event.doc_index
-            remaining = per_doc * (event.doc_total - event.doc_index)
-            timing_placeholder.caption(
-                f"{elapsed:.0f}s vergangen "
-                f"— ca. {remaining:.0f}s verbleibend "
-                f"— {event.chunks_so_far} Chunks bisher"
+        if event.doc_total > 0:
+            if event.phase == "extract":
+                pct = (event.doc_index - 1) / event.doc_total
+            else:
+                pct = event.doc_index / event.doc_total
+            progress_bar.progress(min(pct, 1.0))
+
+        if event.phase == "extract":
+            status_container.update(
+                label=(
+                    f"Extrahiere {event.datei} "
+                    f"({event.doc_index}/{event.doc_total}) "
+                    f"— {elapsed:.0f}s"
+                ),
+                state="running",
             )
-        elif elapsed > 0:
-            timing_placeholder.caption(f"{elapsed:.0f}s vergangen")
+        elif event.phase == "chunk":
+            eta = ""
+            if event.doc_index > 0 and event.doc_total > event.doc_index:
+                per_doc = elapsed / event.doc_index
+                remaining = per_doc * (event.doc_total - event.doc_index)
+                eta = f" — ca. {remaining:.0f}s verbleibend"
+            backend_hint = ""
+            if event.extraction_backend:
+                backend_hint = f" [{event.extraction_backend}]"
+            ocr_hint = " (OCR-Retry)" if event.ocr_retry else ""
+            status_container.update(
+                label=(
+                    f"Dokument {event.doc_index}/{event.doc_total} "
+                    f"— {event.chunks_so_far} Chunks{backend_hint}"
+                    f"{ocr_hint}{eta}"
+                ),
+                state="running",
+            )
+        elif event.phase == "enrich":
+            progress_bar.progress(1.0)
+            status_container.update(
+                label="Kontextanreicherung...",
+                state="running",
+            )
 
         # Per-Dokument-Details (nur bei neuem Dokument nach Chunking)
         if event.phase == "chunk" and event.datei != last_doc.get("datei"):
@@ -213,19 +258,33 @@ def _run_indexing_inner(
             with doc_container:
                 _render_doc_progress(event)
 
-        if event.phase == "enrich":
-            progress_bar.progress(1.0, text="Kontextanreicherung...")
-
     try:
-        payloads, stats = run_ingest(
-            selected_dateien=selected_dateien,
-            on_progress=_ingest_progress,
-        )
+        try:
+            payloads, stats = run_ingest(
+                selected_dateien=selected_dateien,
+                on_progress=_ingest_progress,
+            )
+        except TypeError:
+            payloads, stats = run_ingest(
+                selected_dateien=selected_dateien,
+            )
     except IngestError as exc:
+        status_container.update(label="Extraktion fehlgeschlagen", state="error")
         st.error(f"Ingest fehlgeschlagen: {exc}")
         return
 
-    progress_bar.progress(1.0, text="Extraktion abgeschlossen")
+    elapsed_total = time.monotonic() - start_time
+    progress_bar.progress(1.0)
+    has_warnings = stats.docs_failed > 0
+    status_container.update(
+        label=(
+            f"Extraktion abgeschlossen — "
+            f"{stats.chunks_total} Chunks aus "
+            f"{stats.docs_success} Dokumenten — {elapsed_total:.0f}s"
+        ),
+        state="error" if has_warnings and stats.docs_success == 0 else "complete",
+        expanded=has_warnings,
+    )
     _show_ingest_stats(stats)
 
     if not payloads:
@@ -233,19 +292,24 @@ def _run_indexing_inner(
         return
 
     # Schritt 3: Embed + Upsert (im Thread, Fortschritt via Queue)
-    embed_bar = st.progress(0.0, text="Starte Embedding...")
-    embed_status = st.empty()
+    embed_status = st.status("Starte Embedding...", expanded=True)
+    embed_bar = st.progress(0.0)
 
     try:
         result = _run_async_embed_with_progress(
             payloads, embed_bar, embed_status,
         )
     except Exception as exc:
+        embed_status.update(label="Embedding fehlgeschlagen", state="error")
         st.error(f"Embedding/Upsert fehlgeschlagen: {exc}")
         _show_connection_hint(exc)
         return
 
-    embed_bar.progress(1.0, text="Embedding + Upsert abgeschlossen")
+    embed_bar.progress(1.0)
+    embed_status.update(
+        label="Embedding + Upsert abgeschlossen", state="complete",
+        expanded=False,
+    )
     st.success(
         f"Indexierung abgeschlossen: "
         f"{result.chunks_upserted} Chunks in Qdrant geschrieben."
@@ -262,9 +326,38 @@ def _render_doc_progress(event: ProgressEvent) -> None:
         label += f" — {event.figures_count} Abbildungen"
 
     with st.expander(label, expanded=False):
-        # Strategie
+        # Extraktions-Details
+        details: list[str] = []
+        if event.extraction_backend:
+            details.append(f"Backend: `{event.extraction_backend}`")
+        if event.file_size_bytes:
+            size_mb = event.file_size_bytes / (1024 * 1024)
+            if size_mb >= 1.0:
+                details.append(f"Dateigröße: {size_mb:.1f} MB")
+            else:
+                size_kb = event.file_size_bytes / 1024
+                details.append(f"Dateigröße: {size_kb:.0f} KB")
+        if event.body_chars:
+            details.append(f"Extrahierter Text: {event.body_chars:,} Zeichen")
+        if event.tables_count:
+            details.append(f"Tabellen: {event.tables_count}")
+        if event.ocr_retry:
+            details.append("OCR-Retry: ja")
+        if details:
+            st.caption(" · ".join(details))
+
+        # Strategie + Filter-Info
+        strategy_parts: list[str] = []
         if event.strategy:
-            st.caption(f"Chunking: {event.strategy}")
+            strategy_parts.append(f"Chunking: {event.strategy}")
+        if event.chunks_before_filter and event.chunks_before_filter > event.chunks_total:
+            dropped = event.chunks_before_filter - event.chunks_total
+            strategy_parts.append(
+                f"Filter: {dropped} Chunks entfernt "
+                f"({event.chunks_before_filter} → {event.chunks_total})"
+            )
+        if strategy_parts:
+            st.caption(" · ".join(strategy_parts))
 
         # Sample-Chunk
         if event.sample_chunk:
@@ -275,12 +368,20 @@ def _render_doc_progress(event: ProgressEvent) -> None:
         # Abbildungen (Thumbnails)
         if event.figure_paths:
             figures_dir = Path(get_settings().figures_dir)
-            cols = st.columns(min(len(event.figure_paths), 3))
-            for i, fig_path in enumerate(event.figure_paths):
+            max_show = min(len(event.figure_paths), 8)
+            shown = event.figure_paths[:max_show]
+            cols = st.columns(min(len(shown), 4))
+            for i, fig_path in enumerate(shown):
                 img = figures_dir / fig_path
                 if img.is_file():
                     with cols[i % len(cols)]:
-                        st.image(str(img), width=200)
+                        cap = Path(fig_path).stem.replace("_", " ")
+                        st.image(str(img), caption=cap)
+            if len(event.figure_paths) > max_show:
+                st.caption(
+                    f"… und {len(event.figure_paths) - max_show} "
+                    f"weitere Abbildungen (im Dokument-Viewer einsehbar)"
+                )
 
 
 def _run_async_embed_with_progress(
@@ -299,9 +400,14 @@ def _run_async_embed_with_progress(
     def _thread_target() -> None:
         loop = asyncio.new_event_loop()
         try:
-            r = loop.run_until_complete(
-                embed_and_upsert(payloads, on_progress=_on_progress),
-            )
+            try:
+                r = loop.run_until_complete(
+                    embed_and_upsert(payloads, on_progress=_on_progress),
+                )
+            except TypeError:
+                r = loop.run_until_complete(
+                    embed_and_upsert(payloads),
+                )
             result_holder.append(r)
         except Exception as exc:
             error_holder.append(exc)
@@ -326,8 +432,10 @@ def _run_async_embed_with_progress(
             break
         phases_seen += 1
         pct = min(phases_seen / total_phases, 1.0)
-        progress_bar.progress(pct, text=event.detail)
-        status_placeholder.caption(event.detail)
+        progress_bar.progress(pct)
+        status_placeholder.update(
+            label=event.detail, state="running",
+        )
 
     thread.join()
     if error_holder:
@@ -337,12 +445,12 @@ def _run_async_embed_with_progress(
 
 def _show_ingest_stats(stats: IngestStats) -> None:
     """Zeigt Ingest-Statistiken im UI an."""
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Gesamt", stats.docs_total)
-    c2.metric("Erfolgreich", stats.docs_success)
-    c3.metric("Übersprungen", stats.docs_skipped)
-    c4.metric("Fehlgeschlagen", stats.docs_failed)
-    st.metric("Chunks erzeugt", stats.chunks_total)
+    cols = st.columns(5)
+    cols[0].metric("Gesamt", stats.docs_total)
+    cols[1].metric("Erfolgreich", stats.docs_success)
+    cols[2].metric("Übersprungen", stats.docs_skipped)
+    cols[3].metric("Fehlgeschlagen", stats.docs_failed)
+    cols[4].metric("Chunks", stats.chunks_total)
 
     if stats.errors:
         with st.expander(f"{len(stats.errors)} Fehler/Warnungen"):

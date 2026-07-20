@@ -6,6 +6,7 @@ und Indexierungs-Status pro Dokument.
 """
 from __future__ import annotations
 
+import html
 from pathlib import Path
 
 import pandas as pd
@@ -15,7 +16,9 @@ from halle_gehirn.manifest.editor import (
     delete_manifest_entry,
     list_manifest_entries,
     load_manifest_entries,
+    resolve_label,
 )
+from halle_gehirn.ui._styles import status_dot
 
 _MANUAL_DIR = Path("data/manual")
 
@@ -47,18 +50,40 @@ def render_bestand_tab() -> None:
             is_indexed = datei in indexed_dateien
             file_exists = (_MANUAL_DIR / datei).exists()
 
-            status_icon = "🟢" if is_indexed else "⚪"
-            file_icon = " ⚠️ Datei fehlt" if not file_exists else ""
+            dot = status_dot(is_indexed)
+            file_warn = (
+                ' <span style="color:#f0603a;font-size:11px;">'
+                "Datei fehlt</span>"
+                if not file_exists
+                else ""
+            )
+
+            titel_esc = html.escape(row["titel"])
+            datei_esc = html.escape(datei)
+            doc_type_label = resolve_label(row["doc_type"])
+            bereich_labels = ", ".join(
+                resolve_label(b)
+                for b in (
+                    entry.bereich if hasattr(entry, "bereich") else []
+                )
+            )
+            vert_label = resolve_label(row["vertraulichkeit"])
 
             col_info, col_action = st.columns([5, 1])
             with col_info:
                 st.markdown(
-                    f"{status_icon} **{row['titel']}** "
-                    f"(`{datei}`){file_icon}"
-                )
-                st.caption(
-                    f"{row['doc_type']} · {row['bereich']} · "
-                    f"{row['vertraulichkeit']}"
+                    f'<div class="jv-doc-card">'
+                    f"  {dot}"
+                    f"  <div style='flex:1;min-width:0;'>"
+                    f'    <div><span class="jv-doc-title">{titel_esc}</span>'
+                    f'    <span class="jv-doc-slug">{datei_esc}</span>'
+                    f"    {file_warn}</div>"
+                    f'    <div class="jv-doc-meta">'
+                    f"      {doc_type_label} · {bereich_labels} · "
+                    f"      {vert_label}</div>"
+                    f"  </div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
                 )
             with col_action:
                 if st.button(
@@ -71,7 +96,17 @@ def render_bestand_tab() -> None:
                     else:
                         st.error("Eintrag nicht gefunden.")
 
-        st.caption("🟢 = In Qdrant indexiert  ⚪ = Nicht indexiert")
+        # Legende
+        green_dot = status_dot(True)
+        gray_dot = status_dot(False)
+        st.markdown(
+            f'<div style="display:flex;gap:16px;align-items:center;'
+            f'margin-top:8px;font-size:11.5px;color:#8a877f;">'
+            f"<span>{green_dot} In Qdrant indexiert</span>"
+            f"<span>{gray_dot} Nicht indexiert</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
     # ── Indexierte Dokumente (Qdrant) ──
     st.divider()
@@ -128,7 +163,7 @@ def _render_indexed_section(entries: list) -> None:
         })
 
     df = pd.DataFrame(idx_rows)
-    st.dataframe(df, width="stretch", hide_index=True)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
     # Warnung bei Waisen
     orphans = [r["Datei"] for r in idx_rows if r["Im Manifest"] == "Nein"]

@@ -10,8 +10,10 @@ Pure Funktionen, kein Docling-Import — testbar ohne schwere Backends.
 """
 from __future__ import annotations
 
+import re
 from bisect import bisect_right
 from collections import Counter
+from collections.abc import Callable
 
 import structlog
 
@@ -20,16 +22,24 @@ logger = structlog.get_logger(__name__)
 # Maximale Needle-Laenge fuer die Element-Suche im Markdown
 _NEEDLE_CHARS = 80
 
+# Kuerzere Needle-Laengen als Fallback bei fehlgeschlagener Suche
+_FALLBACK_NEEDLE_CHARS = (50, 30)
+
 # Eine Zeile muss so oft vorkommen, um als wiederholte Kopf-/Fusszeile
 # ueber Seiten hinweg zu gelten
 _REPEAT_THRESHOLD = 3
 
 PageMap = list[tuple[int, int]]
 
+# Marker, den Docling Serve zwischen Seiten einfuegt
+PAGE_BREAK_MARKER = "<!-- PAGE_BREAK -->"
+
 
 def build_page_map(
     body_md: str,
     elements: list[tuple[str, int | None]],
+    *,
+    normalize: Callable[[str], str] | None = None,
 ) -> PageMap:
     """Baut eine Page-Map durch monotone Element-Suche im Markdown.
 
@@ -37,9 +47,17 @@ def build_page_map(
     Nicht auffindbare Elemente (Markdown-Escaping, Umformatierung)
     werden uebersprungen — die Map bleibt monoton und darf sparse sein.
 
+    Bei Nicht-Treffer wird mit kuerzeren Needles (50, 30 Zeichen)
+    erneut gesucht, um Treffer trotz Formatierungsdifferenzen zu
+    ermoeglichen.
+
     Args:
         body_md: Der (ggf. bereinigte) Markdown-Body.
         elements: ``(text, page_no)`` in Dokumentreihenfolge.
+        normalize: Optionale Funktion zur Needle-Normalisierung.
+            Sollte dieselben Inline-Transformationen anwenden wie
+            die Boilerplate-Bereinigung des Body (z.B. Zitations-
+            Entfernung), damit Needle und Body uebereinstimmen.
 
     Returns:
         Aufsteigend sortierte ``(char_offset, page_no)``-Liste; ein
@@ -53,10 +71,25 @@ def build_page_map(
     for text, page in elements:
         if page is None:
             continue
-        needle = " ".join(text.split())[:_NEEDLE_CHARS].strip()
+        raw = " ".join(text.split())
+        if normalize:
+            raw = " ".join(normalize(raw).split())
+        if not raw:
+            continue
+        needle = raw[:_NEEDLE_CHARS].strip()
         if not needle:
             continue
         idx = body_md.find(needle, cursor)
+        # Fallback: kuerzere Needles bei Nicht-Treffer
+        if idx < 0:
+            for shorter in _FALLBACK_NEEDLE_CHARS:
+                fallback_needle = raw[:shorter].strip()
+                if not fallback_needle or fallback_needle == needle:
+                    continue
+                idx = body_md.find(fallback_needle, cursor)
+                if idx >= 0:
+                    needle = fallback_needle
+                    break
         if idx < 0:
             continue
         matched += 1
@@ -72,6 +105,137 @@ def build_page_map(
         page_entries=len(page_map),
     )
     return page_map
+
+
+def strip_page_markers(body_md: str) -> tuple[str, PageMap]:
+    """Extrahiert Page-Map aus eingebetteten Seitenumbruch-Markern.
+
+    Docling Serve fuegt ``<!-- PAGE_BREAK -->`` zwischen Seiten ein,
+    wenn ``md_page_break_placeholder`` gesetzt ist. Diese Funktion
+    entfernt die Marker und baut daraus eine exakte Page-Map.
+
+    Vorteil gegenueber ``build_page_map``: keine Needle-Suche noetig,
+    100 % Trefferquote, unabhaengig von Boilerplate-Cleaning.
+
+    Args:
+        body_md: Markdown-Body MIT eingebetteten Seitenumbruch-Markern.
+
+    Returns:
+        Tuple aus (bereinigter Body ohne Marker, exakte Page-Map).
+    """
+    marker = PAGE_BREAK_MARKER
+    if marker not in body_md:
+        return body_md, []
+
+    page_map: PageMap = [(0, 1)]
+    page = 1
+    cleaned_parts: list[str] = []
+    offset = 0
+
+    for segment in body_md.split(marker):
+        cleaned_parts.append(segment)
+        offset += len(segment)
+        page += 1
+        page_map.append((offset, page))
+
+    # Letzter Eintrag nach dem letzten Segment ist ueberfluessig
+    page_map.pop()
+
+    result = "".join(cleaned_parts)
+    logger.debug(
+        "page_map_from_markers",
+        pages=len(page_map),
+        body_chars=len(result),
+    )
+    return result, page_map
+
+
+def strip_markers_and_clean(
+    body_md: str,
+    clean_fn: Callable[[str], str] | None = None,
+) -> tuple[str, PageMap]:
+    """Entfernt Seitenumbruch-Marker UND bereinigt in einem Schritt.
+
+    Ersetzt die alte Kombination ``strip_page_markers()`` +
+    ``adjust_page_map()``, die Seiteneinträge verlor weil ihre
+    Needle-Suche nach dem Cleaning regelmäßig scheiterte (Seiten-
+    anfänge bestehen oft aus genau dem Boilerplate, das entfernt wird).
+
+    Lösung: Unsichtbare Sentinel-Zeichen (``\\x01``) an jeder
+    Seitengrenze einfügen, **dann** die Cleaning-Funktion auf den
+    Gesamttext anwenden (repeated-header-Erkennung sieht alle Seiten),
+    **dann** die Sentinels extrahieren und entfernen. Ergebnis: 100 %
+    exakte Page-Map unabhängig davon was das Cleaning entfernt.
+
+    Args:
+        body_md: Markdown-Body MIT ``<!-- PAGE_BREAK -->``-Markern.
+        clean_fn: Optionale Bereinigungsfunktion (z.B. ``boilerplate.clean``).
+            Wird auf den Gesamttext angewendet.
+
+    Returns:
+        Tuple aus (bereinigter Body, exakte Page-Map).
+    """
+    marker = PAGE_BREAK_MARKER
+    if marker not in body_md:
+        cleaned = clean_fn(body_md) if clean_fn else body_md
+        return cleaned, []
+
+    segments = body_md.split(marker)
+
+    if clean_fn is None:
+        # Kein Cleaning — direkt zusammenfügen + Page-Map bauen
+        page_map: PageMap = []
+        offset = 0
+        for i, seg in enumerate(segments, start=1):
+            page_map.append((offset, i))
+            offset += len(seg)
+        return "".join(segments), page_map
+
+    # Sentinels an Seitengrenzen einfügen.  \x01 (SOH) wird von keinem
+    # Boilerplate-Regex erkannt (die matchen nur druckbare Zeichen).
+    _SENTINEL_FMT = "\x01PG{}\x01"
+    parts: list[str] = []
+    for i, seg in enumerate(segments):
+        if i > 0:
+            parts.append(_SENTINEL_FMT.format(i + 1))
+        parts.append(seg)
+    marked_body = "".join(parts)
+
+    # Cleaning auf den vollen Text anwenden
+    cleaned = clean_fn(marked_body)
+
+    # Sentinels extrahieren, Positionen merken, dann entfernen
+    sentinel_re = re.compile(r"\x01PG(\d+)\x01")
+    page_map = [(0, 1)]
+
+    matches = list(sentinel_re.finditer(cleaned))
+    if not matches:
+        # Alle Sentinels verloren (sollte nicht passieren) — Fallback
+        logger.warning(
+            "page_sentinels_lost",
+            segments=len(segments),
+        )
+        return cleaned, page_map
+
+    result_parts: list[str] = []
+    removed_chars = 0
+    last_end = 0
+    for m in matches:
+        result_parts.append(cleaned[last_end:m.start()])
+        adj_pos = m.start() - removed_chars
+        page_num = int(m.group(1))
+        page_map.append((adj_pos, page_num))
+        removed_chars += len(m.group())
+        last_end = m.end()
+    result_parts.append(cleaned[last_end:])
+
+    final_body = "".join(result_parts)
+    logger.debug(
+        "page_map_from_sentinels",
+        pages=len(page_map),
+        body_chars=len(final_body),
+    )
+    return final_body, page_map
 
 
 def page_for_offset(page_map: PageMap, offset: int) -> int | None:

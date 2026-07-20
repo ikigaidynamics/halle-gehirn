@@ -1,22 +1,25 @@
 """Query-Pipeline-Ausfuehrung -- Phase 6.
 
-Fuehrt die 10 Pipeline-Stages in exakter Reihenfolge aus:
+Fuehrt die Pipeline-Stages in exakter Reihenfolge aus:
 1. Smalltalk-Detection (0ms, kein LLM)
 2. Guardrails (Injection-Check)
-3. Router
-4. Query-Transform (optional)
-5. Retrieve (HybridRetriever)
-6. Confidence-Gate (rot -> Refusal, KEIN LLM)
-7. Generate (Streaming oder Full)
-8. Validation (URL-Whitelist + Citation)
-9. Grounding (Faithfulness-Check)
-10. Audit (immer letzter Schritt)
+3. Query-Rewrite (konversationell → eigenstaendig)
+4. Router
+5. Query-Transform (optional)
+6. Retrieve (HybridRetriever)
+7. Confidence-Gate (rot -> Refusal, KEIN LLM)
+8. Generate (Streaming oder Full)
+9. Validation (URL-Whitelist + Citation)
+10. Grounding (Faithfulness-Check)
+11. Retrieval-Log (JSONL, Debugging)
+12. Audit (immer letzter Schritt)
 
 WICHTIG: Guardrails VOR Retrieve, Confidence VOR Generate, Audit LAST.
 """
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator
@@ -27,9 +30,14 @@ import structlog
 
 from halle_gehirn.generator.memory import ConversationMemory
 from halle_gehirn.generator.smalltalk import get_response, is_smalltalk
+from halle_gehirn.observability.retrieval_logger import (
+    PipelineTimer,
+    build_log_entry,
+)
 from halle_gehirn.pipeline.factory import QueryPipeline
 from halle_gehirn.pipeline.stages.grounding import GroundingResult
 from halle_gehirn.pipeline.stages.validation import ValidationResult
+from halle_gehirn.retrieval.query_rewriter import RewriteResult
 
 logger = structlog.get_logger(__name__)
 
@@ -119,6 +127,7 @@ class QueryOrchestrator:
         """
         start = time.monotonic()
         p = self._pipeline
+        timer = PipelineTimer()
         debug_info: dict[str, Any] = {}
 
         # 1. Smalltalk
@@ -144,37 +153,54 @@ class QueryOrchestrator:
             self._audit(query, result, session_id)
             return result
 
-        # 3. Router
-        query_type = p.router.route(query)
+        # Memory einmal holen (fuer Rewrite UND Generator)
+        memory = self._get_memory(session_id) if session_id else None
+
+        # 3. Query-Rewrite (konversationell → eigenstaendig)
+        rewrite_result: RewriteResult | None = None
+        search_query = query
+        if p.settings.use_query_rewrite:
+            timer.start("rewrite")
+            history = memory.get_messages() if memory else []
+            rewrite_result = await p.query_rewriter.rewrite(query, history)
+            search_query = rewrite_result.rewritten
+            timer.stop("rewrite")
+        if debug and rewrite_result:
+            debug_info["query_rewritten"] = rewrite_result.rewritten
+            debug_info["was_rewritten"] = rewrite_result.was_rewritten
+
+        # 4. Router (nutzt rewritten query)
+        query_type = p.router.route(search_query)
         if debug:
             debug_info["query_type"] = query_type
 
-        # 4. Query-Transform
-        queries = await p.query_transformer.transform(query)
+        # 5. Query-Transform (nutzt rewritten query)
+        queries = await p.query_transformer.transform(search_query)
         if debug:
             debug_info["transformed_queries"] = queries
 
-        # 5. Retrieve
-        hits = await self._retrieve_dedup(queries, filters)
+        # 6. Retrieve (Timer fuer embed/search/rerank intern)
+        hits = await self._retrieve_dedup(queries, filters, timer)
         if debug:
             debug_info["retrieval_hits"] = len(hits)
 
-        # 6. Confidence-Gate (VOR Generate)
+        # 7. Confidence-Gate (VOR Generate)
         confidence = p.confidence_gate.assess(hits)
         if debug:
             debug_info["confidence"] = confidence
 
-        # 7. Generate (non-streaming)
-        memory = self._get_memory(session_id) if session_id else None
+        # 8. Generate (non-streaming, ORIGINAL query an Generator)
         memory_msgs = memory.get_messages() if memory else None
+        timer.start("generate")
         answer = await p.generator.generate_full(
             query=query,
             hits=hits,
             confidence=confidence,
             memory_messages=memory_msgs,
         )
+        timer.stop("generate")
 
-        # 8./9. Validation + Grounding + PII (gemeinsam mit Stream-Pfad)
+        # 9./10. Validation + Grounding + PII (gemeinsam mit Stream-Pfad)
         final = await self._finalize_answer(answer, hits, confidence)
 
         # Memory aktualisiert die BEREINIGTE Antwort (nicht den Rohtext)
@@ -196,8 +222,20 @@ class QueryOrchestrator:
             debug_info=debug_info if debug else {},
         )
 
-        # 10. Audit (LAST)
-        self._audit(query, result, session_id)
+        # 11. Retrieval-Log (JSONL)
+        self._log_retrieval(
+            session_id=session_id,
+            rewrite_result=rewrite_result,
+            query_type=query_type,
+            hits=hits,
+            confidence=confidence,
+            outcome=_outcome(confidence, result),
+            answer_length=len(final.answer),
+            timer=timer,
+        )
+
+        # 12. Audit (LAST)
+        self._audit(query, result, session_id, rewrite_result)
         return result
 
     async def _finalize_answer(
@@ -258,6 +296,7 @@ class QueryOrchestrator:
         """
         start = time.monotonic()
         p = self._pipeline
+        timer = PipelineTimer()
 
         # 1. Smalltalk
         if is_smalltalk(query):
@@ -284,23 +323,36 @@ class QueryOrchestrator:
             )
             return
 
-        # 3. Router
-        p.router.route(query)
+        # Memory einmal holen (fuer Rewrite UND Generator)
+        memory = self._get_memory(session_id) if session_id else None
 
-        # 4. Query-Transform
-        queries = await p.query_transformer.transform(query)
+        # 3. Query-Rewrite (konversationell → eigenstaendig)
+        rewrite_result: RewriteResult | None = None
+        search_query = query
+        if p.settings.use_query_rewrite:
+            timer.start("rewrite")
+            history = memory.get_messages() if memory else []
+            rewrite_result = await p.query_rewriter.rewrite(query, history)
+            search_query = rewrite_result.rewritten
+            timer.stop("rewrite")
 
-        # 5. Retrieve
-        hits = await self._retrieve_dedup(queries, filters)
+        # 4. Router (nutzt rewritten query)
+        p.router.route(search_query)
 
-        # 6. Confidence-Gate (VOR Generate)
+        # 5. Query-Transform (nutzt rewritten query)
+        queries = await p.query_transformer.transform(search_query)
+
+        # 6. Retrieve (Timer fuer embed/search/rerank intern)
+        hits = await self._retrieve_dedup(queries, filters, timer)
+
+        # 7. Confidence-Gate (VOR Generate)
         confidence = p.confidence_gate.assess(hits)
 
-        # 7. Generate (STREAMING)
-        memory = self._get_memory(session_id) if session_id else None
+        # 8. Generate (STREAMING, ORIGINAL query an Generator)
         memory_msgs = memory.get_messages() if memory else None
         parts: list[str] = []
 
+        timer.start("generate")
         async for token in p.generator.generate(
             query=query,
             hits=hits,
@@ -309,6 +361,7 @@ class QueryOrchestrator:
         ):
             parts.append(token)
             yield {"type": "token", "content": token}
+        timer.stop("generate")
 
         full_answer = "".join(parts)
 
@@ -316,10 +369,7 @@ class QueryOrchestrator:
         # kann >30s dauern — ohne Daten-Fluss droht Client-Timeout)
         yield {"type": "status", "content": ""}
 
-        # 8./9. Validation + Grounding + PII — Ergebnisse werden ANGEWANDT:
-        # Tokens sind bereits gestreamt, daher traegt das Done-Event die
-        # autoritative final_answer; der Client ersetzt den gestreamten
-        # Text, falls er abweicht (Bereinigung/PII-Redaktion).
+        # 9./10. Validation + Grounding + PII
         final = await self._finalize_answer(full_answer, hits, confidence)
 
         # Memory speichert die BEREINIGTE Antwort
@@ -333,41 +383,55 @@ class QueryOrchestrator:
         # Done-Event mit Metadaten + finaler (bereinigter) Antwort
         yield _done_event(confidence, sources, start, final)
 
-        # 10. Audit (LAST)
-        self._audit(
-            query,
-            QueryResult(
-                answer=final.answer,
-                confidence=confidence,
-                sources=sources,
-                validation=final.validation,
-                grounding=final.grounding,
-                pii_redacted=final.pii_redacted,
-            ),
-            session_id,
+        # 11. Retrieval-Log (JSONL)
+        result = QueryResult(
+            answer=final.answer,
+            confidence=confidence,
+            sources=sources,
+            validation=final.validation,
+            grounding=final.grounding,
+            pii_redacted=final.pii_redacted,
         )
+        self._log_retrieval(
+            session_id=session_id,
+            rewrite_result=rewrite_result,
+            query_type=p.router.route(search_query),
+            hits=hits,
+            confidence=confidence,
+            outcome=_outcome(confidence, result),
+            answer_length=len(final.answer),
+            timer=timer,
+        )
+
+        # 12. Audit (LAST)
+        self._audit(query, result, session_id, rewrite_result)
 
     async def _retrieve_dedup(
         self,
         queries: list[str],
         filters: dict[str, Any] | None,
+        timer: PipelineTimer | None = None,
     ) -> list[Any]:
         """Retrieval ueber alle Queries mit Deduplizierung."""
         all_hits: list[Any] = []
         for q in queries:
             hits = await self._pipeline.retriever.retrieve(
-                q, filters=filters,
+                q, filters=filters, timer=timer,
             )
             all_hits.extend(hits)
         return _deduplicate_hits(all_hits)
 
     def _audit(
-        self, query: str, result: QueryResult, session_id: str,
+        self,
+        query: str,
+        result: QueryResult,
+        session_id: str,
+        rewrite_result: RewriteResult | None = None,
     ) -> None:
         """Schreibt den Audit-Eintrag (immer letzter Schritt)."""
         query_hash = hashlib.sha256(query.encode()).hexdigest()[:16]
         source_ids = [s.get("id", "") for s in result.sources]
-        self._pipeline.audit_logger.log({
+        record: dict[str, Any] = {
             "query_hash": query_hash,
             "confidence": result.confidence,
             "source_ids": source_ids,
@@ -381,7 +445,44 @@ class QueryOrchestrator:
                 else None
             ),
             "session_id": session_id,
-        })
+            "query_rewritten": (
+                rewrite_result.was_rewritten if rewrite_result else False
+            ),
+        }
+        self._pipeline.audit_logger.log(record)
+
+    def _log_retrieval(
+        self,
+        *,
+        session_id: str,
+        rewrite_result: RewriteResult | None,
+        query_type: str,
+        hits: list[Any],
+        confidence: str,
+        outcome: str,
+        answer_length: int,
+        timer: PipelineTimer,
+    ) -> None:
+        """Schreibt JSONL-Retrieval-Log-Eintrag (fail-silent)."""
+        if not self._pipeline.settings.retrieval_log_enabled:
+            return
+        entry = build_log_entry(
+            session_id=session_id,
+            query_original=rewrite_result.original if rewrite_result else "",
+            query_rewritten=(
+                rewrite_result.rewritten if rewrite_result else ""
+            ),
+            was_rewritten=(
+                rewrite_result.was_rewritten if rewrite_result else False
+            ),
+            query_type=query_type,
+            hits=hits,
+            confidence=confidence,
+            outcome=outcome,
+            answer_length=answer_length,
+            timer=timer,
+        )
+        self._pipeline.retrieval_logger.log(entry)
 
     def clear_session(self, session_id: str) -> None:
         """Loescht die Memory einer Session."""
@@ -391,6 +492,17 @@ class QueryOrchestrator:
 def _elapsed_ms(start: float) -> float:
     """Berechnet die vergangene Zeit in Millisekunden."""
     return (time.monotonic() - start) * 1000
+
+
+def _outcome(confidence: str, result: QueryResult) -> str:
+    """Bestimmt das Outcome fuer das Retrieval-Log."""
+    if result.smalltalk:
+        return "smalltalk"
+    if result.guardrail_blocked:
+        return "blocked"
+    if confidence == "rot":
+        return "refusal"
+    return "answered"
 
 
 def _done_event(
@@ -437,20 +549,38 @@ def _deduplicate_hits(hits: list[Any]) -> list[Any]:
     return deduped
 
 
-# Maximale Snippet-Laenge in der API-Antwort (ganze Chunks blaehen die
-# Events auf; das UI zeigt ohnehin nur einen Ausschnitt)
-_SNIPPET_MAX_CHARS = 300
+# Maximale Snippet-Laenge in der API-Antwort.
+# Frontend hat ExpandableChunk mit "Mehr anzeigen" — daher grosszuegig.
+_SNIPPET_MAX_CHARS = 2000
+
+
+# Satzende: Punkt/Ausrufezeichen/Fragezeichen gefolgt von Whitespace
+_SENTENCE_END_RE = re.compile(r"[.!?]\s")
 
 
 def _truncate_snippet(text: str, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
-    """Kuerzt ein Snippet an der Wortgrenze mit Ellipse."""
+    """Kuerzt ein Snippet, bevorzugt am Satzende, mit Ellipse.
+
+    Versucht zuerst, an einem Satzende innerhalb des Limits zu schneiden.
+    Faellt auf Wortgrenze zurueck wenn kein Satzende im hinteren Drittel
+    gefunden wird.
+    """
     text = text.strip()
     if len(text) <= max_chars:
         return text
+    # Suche letztes Satzende im erlaubten Bereich (mind. 60 % nutzen)
+    min_cut = max_chars * 3 // 5
+    best = -1
+    for m in _SENTENCE_END_RE.finditer(text, 0, max_chars):
+        if m.start() >= min_cut:
+            best = m.start() + 1  # nach dem Satzzeichen
+    if best > 0:
+        return text[:best].rstrip()
+    # Fallback: Wortgrenze
     cut = text.rfind(" ", 0, max_chars)
     if cut < max_chars // 2:
         cut = max_chars
-    return text[:cut].rstrip() + " …"
+    return text[:cut].rstrip() + " \u2026"
 
 
 def _build_sources(hits: list[Any]) -> list[dict[str, Any]]:
@@ -463,6 +593,10 @@ def _build_sources(hits: list[Any]) -> list[dict[str, Any]]:
     for i, hit in enumerate(hits, start=1):
         payload = getattr(hit, "payload", {}) or {}
         raw_text = payload.get("text_raw") or payload.get("text") or ""
+        # Alle Facetten-Metadaten aus dem Qdrant-Payload durchreichen
+        bereich = payload.get("bereich") or []
+        if isinstance(bereich, str):
+            bereich = [bereich]
         sources.append({
             "id": f"S{i}",
             "titel": payload.get("titel") or "Unbekannt",
@@ -475,6 +609,18 @@ def _build_sources(hits: list[Any]) -> list[dict[str, Any]]:
             "breadcrumb": payload.get("breadcrumb") or "",
             "figure_refs": payload.get("figure_refs") or [],
             "figure_captions": payload.get("figure_captions") or [],
+            "bereich": bereich,
+            "herkunft": payload.get("herkunft") or "",
+            "quelltyp": payload.get("quelltyp") or "",
+            "vertraulichkeit": payload.get("vertraulichkeit") or "",
+            "status": payload.get("status") or "",
+            "jahr": payload.get("jahr"),
+            "thema": payload.get("thema") or [],
+            "anlage": payload.get("anlage") or [],
+            "projekt": payload.get("projekt") or [],
+            "ansprechperson": payload.get("ansprechperson") or [],
+            "autor": payload.get("autor") or [],
+            "grad": payload.get("grad") or "",
         })
     return sources
 

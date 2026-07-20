@@ -54,6 +54,8 @@ class FakeHit:
 
 def _mock_pipeline(settings: Settings | None = None) -> QueryPipeline:
     """Erzeugt QueryPipeline mit gemockten Komponenten."""
+    from halle_gehirn.retrieval.query_rewriter import RewriteResult
+
     s = settings or _test_settings()
     p = MagicMock(spec=QueryPipeline)
     p.settings = s
@@ -67,6 +69,12 @@ def _mock_pipeline(settings: Settings | None = None) -> QueryPipeline:
     # Router
     p.router = MagicMock()
     p.router.route.return_value = "factual"
+
+    # Query-Rewriter (gibt Original unveraendert zurueck)
+    p.query_rewriter = AsyncMock()
+    p.query_rewriter.rewrite.return_value = RewriteResult(
+        original="Testfrage", rewritten="Testfrage", was_rewritten=False,
+    )
 
     # Query-Transform (gibt nur Original zurueck)
     p.query_transformer = AsyncMock()
@@ -95,6 +103,9 @@ def _mock_pipeline(settings: Settings | None = None) -> QueryPipeline:
 
     # Audit
     p.audit_logger = MagicMock()
+
+    # Retrieval-Logger
+    p.retrieval_logger = MagicMock()
 
     return p
 

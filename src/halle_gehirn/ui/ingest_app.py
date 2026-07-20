@@ -27,6 +27,7 @@ from halle_gehirn.ui._dokument_tab import render_dokument_tab
 from halle_gehirn.ui._indexieren_tab import render_indexieren_tab
 from halle_gehirn.ui._neu_tab_helpers import handle_save, render_vokabular_form
 from halle_gehirn.ui._server_selector import render_ollama_sidebar
+from halle_gehirn.ui._styles import inject_custom_css, render_footer, render_topbar
 
 _ALLOWED_EXTENSIONS = ["pdf", "docx", "pptx", "xlsx", "md", "txt"]
 _PUBLIC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "public"
@@ -34,6 +35,17 @@ _PUBLIC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "public"
 
 def main() -> None:
     """Hauptfunktion der Ingest-App."""
+    # Windows-Fix: stdout/stderr auf UTF-8 umstellen, damit structlog
+    # mit Sonderzeichen aus PDF-Extrakten nicht an cp1252 scheitern.
+    # Streamlit wraps stdout — reconfigure kann fehlschlagen.
+    import sys
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, AttributeError):
+                pass
+
     icon_path = _PUBLIC_DIR / "MD_Icon_bg.jpg"
     st.set_page_config(
         page_title="Jarvis — Wissensbestand",
@@ -41,8 +53,9 @@ def main() -> None:
         layout="wide",
     )
 
-    # ── Header mit MDZ-Branding ──
-    _render_branding_header()
+    # ── CSS + Topbar ──
+    inject_custom_css()
+    render_topbar(str(icon_path))
 
     # ── Sidebar: Ollama-Server-Auswahl ──
     render_ollama_sidebar()
@@ -63,23 +76,9 @@ def main() -> None:
     with tab_index:
         render_indexieren_tab()
 
-
-# ────────────────────────── Branding ──────────────────────────
-
-
-def _render_branding_header() -> None:
-    """Zeigt MDZ-Logo und Titel."""
+    # ── Foerder-Fusszeile ──
     logo_path = _PUBLIC_DIR / "MD_zentrum_Spreeland.png"
-    col_logo, col_title = st.columns([1, 3])
-    with col_logo:
-        if logo_path.exists():
-            st.image(str(logo_path), width=200)
-    with col_title:
-        st.title("Jarvis — Wissensbestand")
-        st.caption(
-            "Dokumentenverwaltung & Indexierung · "
-            "Mittelstand-Digital Zentrum Spreeland"
-        )
+    render_footer(str(logo_path))
 
 
 # ────────────────────────── Tab: Neu ──────────────────────────

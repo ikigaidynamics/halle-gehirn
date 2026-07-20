@@ -74,6 +74,22 @@ _SEPARATOR_LINE_RE = re.compile(
 # Excessive blank lines (three or more in a row).
 _EXCESS_BLANK_RE = re.compile(r"\n{3,}")
 
+# Inline-Zitationsverweise: [1], [2, 3], [1-5], [9, p. 1], [1, pp. 1-5],
+# [vgl. 3, S. 42] etc.
+_INLINE_CITATION_RE = re.compile(
+    r"\s*\["
+    r"(?:vgl\.?\s*)?"                           # optionales "vgl."
+    r"\d+"                                       # erste Zahl
+    r"(?:[,\s\-\u2013]+\d+)*"                   # weitere Zahlen (Komma/Bereich)
+    r"(?:"                                       # optionale Seitenangabe
+    r"[,;]\s*"
+    r"(?:pp?\.?|S\.?|Kap\.?)\s*"                # p./pp./S./Kap.
+    r"\d+(?:\s*[-\u2013]\s*\d+)?"               # Seitenzahl(en)
+    r")?"
+    r"\]",
+    re.IGNORECASE,
+)
+
 # Leading/trailing whitespace on each line.
 _TRAILING_WS_RE = re.compile(r"[ \t]+$", re.MULTILINE)
 
@@ -102,6 +118,7 @@ def clean(text: str) -> str:
     original_len = len(text)
 
     text = remove_page_numbers(text)
+    text = remove_inline_citations(text)
     text = _remove_nav_chrome(text)
     text = remove_repeated_headers(text)
     text = _remove_separator_lines(text)
@@ -132,6 +149,22 @@ def remove_page_numbers(text: str) -> str:
         Text with page-number-only lines removed.
     """
     return _PAGE_NUMBER_RE.sub("", text)
+
+
+def remove_inline_citations(text: str) -> str:
+    """Strip inline academic citation references like [9, p. 1].
+
+    Removes bracketed numeric references with optional page numbers,
+    e.g. ``[1]``, ``[2, 3]``, ``[9, p. 1]``, ``[1, pp. 1-5]``,
+    ``[vgl. 3, S. 42]``.
+
+    Args:
+        text: Input text.
+
+    Returns:
+        Text with inline citations removed.
+    """
+    return _INLINE_CITATION_RE.sub("", text)
 
 
 def remove_repeated_headers(text: str, *, min_repeats: int = 3) -> str:

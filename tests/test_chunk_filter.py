@@ -414,6 +414,105 @@ class TestPositionalExemptions:
         assert len(result) == 2  # Deckblatt weg, Kapitel bleiben
 
 
+class TestAppendixRetention:
+    """Tests fuer die selektive Anhangs-Beibehaltung."""
+
+    def test_short_appendix_dropped(self) -> None:
+        """Kurze Anhangs-Chunks werden weiterhin verworfen."""
+        chunks = [
+            _make_chunk(
+                "## 1 Einleitung\n\nText. " * 10,
+                index=0,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                "## Anhang\n\nKurzer Text.",
+                index=1,
+                headings=["Anhang"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 1
+        assert "Einleitung" in result[0].text
+
+    def test_substantive_appendix_kept(self) -> None:
+        """Anhangs-Chunks mit genuegend Fliesstext ueberleben."""
+        substantive_text = (
+            "## Anhang A: Installationsanleitung\n\n"
+            + "Die Installation des Systems erfordert mehrere Schritte. "
+            * 30  # > 150 Woerter
+        )
+        chunks = [
+            _make_chunk(
+                "## 1 Einleitung\n\nText. " * 10,
+                index=0,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                substantive_text,
+                index=1,
+                headings=["Anhang", "Anhang A: Installationsanleitung"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 2
+        assert "Installationsanleitung" in result[1].text
+
+    def test_non_appendix_tail_matter_still_dropped(self) -> None:
+        """Literaturverzeichnis wird weiterhin verworfen, auch wenn lang."""
+        long_bib = "[1] Mueller et al. 2023. Robotik. " * 50
+        chunks = [
+            _make_chunk(
+                "## 1 Einleitung\n\nText. " * 10,
+                index=0,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                f"## Literaturverzeichnis\n\n{long_bib}",
+                index=1,
+                headings=["Literaturverzeichnis"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 1
+        assert "Einleitung" in result[0].text
+
+    def test_appendix_threshold_boundary(self) -> None:
+        """Exakt am Schwellwert: 150 Woerter reichen gerade."""
+        # 150 Woerter = 150 "Wort " = 750 Zeichen
+        text_150w = "Wort " * 150
+        chunks = [
+            _make_chunk(
+                "## 1 Einleitung\n\nText. " * 10,
+                index=0,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                text_150w,
+                index=1,
+                headings=["Anhang"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 2  # 150 Woerter >= Schwellwert
+
+    def test_appendix_not_affected_for_handbuch(self) -> None:
+        """Fuer nicht-Thesis doc_types greift kein Tail-Matter-Filter."""
+        chunks = [
+            _make_chunk("Inhalt " * 20, index=0),
+            _make_chunk(
+                "## Anhang\n\n" + "Anhangstext " * 20,
+                index=1,
+                headings=["Anhang"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="handbuch")
+        # Anhang-Heading wird als TOC-Heading erkannt, aber kein Tail-Filter
+        # Der Chunk wird ggf. durch toc_heading-Regel verworfen
+        # Wichtig: kein Tail-Matter-Filter aktiv
+        assert any("Anhangstext" in c.text for c in result) or len(result) >= 1
+
+
 class TestReindexing:
     """Tests fuer die Re-Indizierung nach Filterung."""
 

@@ -17,6 +17,7 @@ from halle_gehirn.manifest.editor import load_manifest_entries, resolve_label
 from halle_gehirn.ui._display_helpers import (
     clean_snippet,
     md_lists_to_html,
+    md_table_to_html,
     render_meta_table,
 )
 
@@ -104,24 +105,35 @@ def render_dokument_tab() -> None:
     entry = next(e for e in entries if e.datei == selected)
 
     # ── Metadaten-Uebersicht ──
-    with st.expander("Manifest-Metadaten", expanded=False):
-        meta_cols = st.columns(3)
-        with meta_cols[0]:
-            st.markdown(f"**Titel:** {entry.titel}")
-            st.markdown(f"**Typ:** {resolve_label(entry.doc_type)}")
-            bereich_labels = ", ".join(
-                resolve_label(b) for b in entry.bereich
+    with st.expander("Manifest-Metadaten", expanded=True):
+        bereich_labels = ", ".join(
+            resolve_label(b) for b in entry.bereich
+        )
+        meta_items = [
+            ("Titel", entry.titel),
+            ("Dokumenttyp", resolve_label(entry.doc_type)),
+            ("Bereich", bereich_labels),
+            ("Herkunft", resolve_label(entry.herkunft)),
+            ("Quelltyp", resolve_label(entry.quelltyp)),
+            ("Vertraulichkeit", resolve_label(entry.vertraulichkeit)),
+            ("Jahr", str(entry.jahr) if entry.jahr else "—"),
+            ("Status", resolve_label(entry.status)),
+        ]
+        if entry.grad:
+            meta_items.append(("Grad", resolve_label(entry.grad)))
+
+        rows_html = ""
+        for label, val in meta_items:
+            rows_html += (
+                f"<tr>"
+                f'<td class="jv-meta-label">{label}</td>'
+                f'<td class="jv-meta-value">{val}</td>'
+                f"</tr>"
             )
-            st.markdown(f"**Bereich:** {bereich_labels}")
-        with meta_cols[1]:
-            st.markdown(f"**Herkunft:** {resolve_label(entry.herkunft)}")
-            st.markdown(f"**Quelltyp:** {resolve_label(entry.quelltyp)}")
-            st.markdown(f"**Vertraulichkeit:** {resolve_label(entry.vertraulichkeit)}")
-        with meta_cols[2]:
-            st.markdown(f"**Jahr:** {entry.jahr or '—'}")
-            st.markdown(f"**Status:** {resolve_label(entry.status)}")
-            if entry.grad:
-                st.markdown(f"**Grad:** {resolve_label(entry.grad)}")
+        st.markdown(
+            f'<table class="jv-meta-table">{rows_html}</table>',
+            unsafe_allow_html=True,
+        )
 
     # ── Dokumentinhalt ──
     st.divider()
@@ -156,7 +168,7 @@ def _render_document_content(datei: str) -> None:
         st.caption(f"Datei: {file_path} ({file_path.stat().st_size:,} Bytes)")
     else:
         st.caption(
-            f"Vorschau nicht verfuegbar fuer {suffix}-Dateien. "
+            f"Vorschau nicht verfügbar für {suffix}-Dateien. "
             f"Datei: {file_path}"
         )
 
@@ -175,31 +187,82 @@ def _read_text_file(path: Path) -> str | None:
 
 
 def _render_pdf_figures(file_path: Path) -> None:
-    """Zeigt extrahierte Abbildungen aus einer PDF-Datei."""
+    """Zeigt extrahierte Abbildungen mit Deaktivierungs-Haekchen."""
     from halle_gehirn.config import get_settings
 
     fig_paths = _find_figures_for_file(
         file_path, Path(get_settings().figures_dir),
     )
-    if fig_paths:
-        st.markdown(f"**{len(fig_paths)} Abbildung(en) extrahiert:**")
-        for fig_path in fig_paths:
-            caption = fig_path.stem.replace("_", " ").title()
-            try:
-                st.image(str(fig_path), caption=caption)
-            except Exception as exc:
-                st.warning(f"Bild konnte nicht geladen werden: {exc}")
-    else:
+    if not fig_paths:
         st.info(
             "Keine extrahierten Abbildungen gefunden. "
             "Bitte zuerst indexieren, um Abbildungen zu extrahieren."
         )
+        return
+
+    active = [p for p in fig_paths if not _is_disabled(p)]
+    disabled = [p for p in fig_paths if _is_disabled(p)]
+    st.markdown(
+        f"**{len(active)} Abbildung(en) aktiv** "
+        f"({len(disabled)} deaktiviert)" if disabled
+        else f"**{len(fig_paths)} Abbildung(en) extrahiert:**"
+    )
+
+    for fig_path in fig_paths:
+        is_off = _is_disabled(fig_path)
+        caption = fig_path.stem.replace("_", " ").title()
+        key = f"fig_{fig_path.name}_{fig_path.parent.name}"
+
+        col_cb, col_img = st.columns([0.3, 5])
+        with col_cb:
+            enabled = st.checkbox(
+                "Aktiv",
+                value=not is_off,
+                key=key,
+                label_visibility="collapsed",
+            )
+        with col_img:
+            if enabled:
+                if is_off:
+                    # War deaktiviert, soll reaktiviert werden
+                    _set_disabled(fig_path, False)
+                    st.rerun()
+                try:
+                    st.image(str(fig_path), caption=caption, width=400)
+                except Exception as exc:
+                    st.warning(f"Bild nicht ladbar: {exc}")
+            else:
+                if not is_off:
+                    # War aktiv, soll deaktiviert werden
+                    _set_disabled(fig_path, True)
+                    st.rerun()
+                st.caption(
+                    f"~~{caption}~~ — deaktiviert "
+                    f"(wird bei Neu-Indexierung ignoriert)"
+                )
+
+
+def _is_disabled(fig_path: Path) -> bool:
+    """Prueft ob eine Abbildung deaktiviert ist (.disabled-Suffix)."""
+    return fig_path.suffix == ".disabled"
+
+
+def _set_disabled(fig_path: Path, disabled: bool) -> None:
+    """Aktiviert oder deaktiviert eine Abbildung via Umbenennung."""
+    if disabled and not _is_disabled(fig_path):
+        fig_path.rename(fig_path.with_suffix(".disabled"))
+    elif not disabled and _is_disabled(fig_path):
+        # .disabled -> .png
+        fig_path.rename(fig_path.with_suffix(".png"))
 
 
 def _find_figures_for_file(
     file_path: Path, figures_dir: Path,
 ) -> list[Path]:
-    """Sucht extrahierte Abbildungen fuer eine Datei via Source-Hash."""
+    """Sucht extrahierte Abbildungen fuer eine Datei via Source-Hash.
+
+    Findet sowohl aktive (.png) als auch deaktivierte (.disabled) Dateien.
+    """
     if not figures_dir.exists():
         return []
     h = hashlib.sha256()
@@ -212,7 +275,9 @@ def _find_figures_for_file(
     hash_dir = figures_dir / h.hexdigest()[:16]
     if not hash_dir.exists():
         return []
-    return sorted(hash_dir.glob("*.png"))
+    active = list(hash_dir.glob("*.png"))
+    disabled = list(hash_dir.glob("*.disabled"))
+    return sorted(active + disabled, key=lambda p: p.stem)
 
 
 def _render_chunks(datei: str) -> None:
@@ -232,7 +297,7 @@ def _render_chunks(datei: str) -> None:
 
     if not chunks:
         st.info(
-            "Keine Chunks fuer dieses Dokument in Qdrant. "
+            "Keine Chunks für dieses Dokument in Qdrant. "
             "Bitte zuerst indexieren."
         )
         return
@@ -256,12 +321,9 @@ def _render_chunks(datei: str) -> None:
             cleaned = clean_snippet(text_raw)
             escaped = html.escape(cleaned)
             formatted = md_lists_to_html(escaped)
+            formatted = md_table_to_html(formatted)
             st.markdown(
-                f'<div style="white-space: pre-wrap; font-size: 0.9em;'
-                f" color: #333; background: #f8f9fa; padding: 10px;"
-                f' border-radius: 6px; border-left: 3px solid #0066cc;'
-                f' max-height: 400px; overflow-y: auto;">'
-                f"{formatted}</div>",
+                f'<div class="jv-chunk-text">{formatted}</div>',
                 unsafe_allow_html=True,
             )
 
@@ -271,10 +333,7 @@ def _render_chunks(datei: str) -> None:
                 st.markdown("**Context-Prefix:**")
                 ctx_escaped = html.escape(ctx)
                 st.markdown(
-                    f'<div style="white-space: pre-wrap; font-size: 0.85em;'
-                    f" color: #666; background: #fff3cd; padding: 8px;"
-                    f' border-radius: 4px; font-style: italic;">'
-                    f"{ctx_escaped}</div>",
+                    f'<div class="jv-context-prefix">{ctx_escaped}</div>',
                     unsafe_allow_html=True,
                 )
 
@@ -326,9 +385,9 @@ def _render_chunk_actions(
     st.markdown("---")
     cols = st.columns([1, 1, 4])
     with cols[0]:
-        if st.button("Loeschen", key=f"del_{pid}", type="secondary"):
+        if st.button("Löschen", key=f"del_{pid}", type="secondary"):
             delete_fn([pid])
-            st.success(f"Chunk {idx} geloescht.")
+            st.success(f"Chunk {idx} gelöscht.")
             st.rerun()
     with cols[1]:
         edit_key = f"editing_{pid}"
@@ -349,7 +408,7 @@ def _render_chunk_actions(
                 st.session_state[f"editing_{pid}"] = False
                 st.warning(
                     "Text aktualisiert. Der Embedding-Vektor bleibt "
-                    "unveraendert — fuer volle Aktualisierung bitte "
+                    "unverändert — für volle Aktualisierung bitte "
                     "neu indexieren."
                 )
                 st.rerun()

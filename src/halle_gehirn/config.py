@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     min_chunk_chars: int = 100
     filter_source_code: bool = True
     context_concurrency: int = 4
+    chunks_per_page_warn: float = 5.0  # Warnung ab N Chunks/Seite
+    chunks_per_page_abort: float = 15.0  # Harter Abbruch ab N Chunks/Seite
 
     # ── Extraction (Docling) ──
     docling_serve_url: str = ""  # leer = lokale Lib; z.B. http://141.43.76.21:5001

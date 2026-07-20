@@ -11,6 +11,9 @@ Filter-Regeln:
    — Ausnahmen: Kurzfassung/Abstract sowie Tabellen-Chunks
 5. Tail-Matter-Filter (abschlussarbeit: alles ab Anhang/Literaturverzeichnis)
    — Ausnahme: Tabellen-Chunks (positional bedeutungslos, s. _should_drop)
+6. Quellcode-Heuristik (optional, per Setting)
+7. Base64/Binaerdaten-Erkennung — lange alphanumerische Runs oder
+   niedriger Anteil lesbarer Zeichen (kaputte Font-Encodings)
 """
 from __future__ import annotations
 
@@ -52,8 +55,10 @@ _TOC_HEADINGS: frozenset[str] = frozenset({
     "eigenständigkeitserklärung",
 })
 
-# Tail-Matter-Headings: Ab diesem Heading werden ALLE nachfolgenden
-# Chunks verworfen (inkl. Sub-Abschnitte).
+# Tail-Matter-Headings: Ab diesem Heading werden nachfolgende Chunks
+# verworfen (inkl. Sub-Abschnitte). Anhangs-Headings triggern den
+# Drop, aber substantielle Anhangs-Chunks (>MIN_APPENDIX_WORDS Woerter)
+# ueberleben (z.B. Installationsanleitungen, Testprotokolle).
 # Nur fuer doc_type in (abschlussarbeit, promotion).
 _TAIL_HEADINGS: frozenset[str] = frozenset({
     "anhang",
@@ -78,6 +83,16 @@ _TAIL_HEADINGS: frozenset[str] = frozenset({
     "eigenstaendigkeitserklaerung",
     "eigenständigkeitserklärung",
 })
+
+# Anhang-Headings: Unter diesen koennen substantielle Chunks ueberleben
+_APPENDIX_HEADINGS: frozenset[str] = frozenset({
+    "anhang", "anhaenge", "anhänge",
+    "appendix", "appendices",
+    "anlagen",
+})
+
+# Minimum Woerter fuer substantiellen Anhangs-Inhalt
+_MIN_APPENDIX_WORDS = 150
 
 # Kurzfassungs-/Abstract-Headings: inhaltstragende Front-Matter-Abschnitte,
 # die den positionalen Front-Matter-Drop UEBERLEBEN (BTU-Abschlussarbeiten:
@@ -121,6 +136,21 @@ _CODE_LINE_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 _CODE_DENSITY_THRESHOLD = 0.4
 _CODE_MIN_LINES = 5
+
+# Base64 / Binaerdaten-Erkennung: lange alphanumerische Runs ohne
+# Leerzeichen oder Interpunktion deuten auf eingebettete Binaerdaten
+# (Base64-Streams, kaputte Font-Encodings). Chunks mit hoher Dichte
+# solcher Runs sind nicht inhaltlich nutzbar.
+_BASE64_RUN_RE = re.compile(r"[A-Za-z0-9+/=]{40,}")
+_BASE64_DENSITY_THRESHOLD = 0.3  # >30% des Textes sind Base64-Runs
+
+# Lesbarkeits-Schwelle fuer einzelne Chunks: wenn weniger als 60%
+# der Zeichen "lesbar" (Alphanumerik, Whitespace, gaengige Interpunktion,
+# deutsche Sonderzeichen) sind, ist der Chunk garbled.
+_MIN_CHUNK_READABLE_RATIO = 0.60
+_READABLE_CHARS = frozenset(
+    ".,;:!?-–—()[]{}\"'/\\@#$%&*+=<>|~^`_äöüÄÖÜß€°§\n\r\t "
+)
 
 
 def filter_chunks(
@@ -308,7 +338,11 @@ def _should_drop(
         return "front_matter"
 
     # Regel 5: Tail-Matter (Anhang, Literaturverzeichnis, Erklaerungen)
+    # Ausnahme: Substantielle Anhangs-Chunks (Installationsanleitungen,
+    # Testprotokolle etc.) ueberleben wenn sie genuegend Fliesstext haben.
     if chunk_idx >= tail_matter_start and not positional_exempt:
+        if _is_appendix_content(chunk) and _word_count(text) >= _MIN_APPENDIX_WORDS:
+            return None  # Substantieller Anhangs-Inhalt bleibt
         return "tail_matter"
 
     # Regel 1: Zu kurz (Tabellen ausgenommen)
@@ -326,6 +360,10 @@ def _should_drop(
     # Regel 6: Quellcode-Heuristik
     if filter_code and _is_source_code(text):
         return "source_code"
+
+    # Regel 7: Base64 / Binaerdaten / garbled Text
+    if _is_binary_or_base64(text):
+        return "binary_or_base64"
 
     return None
 
@@ -382,3 +420,56 @@ def _has_dot_leaders(text: str) -> bool:
         return False
     dot_lines = sum(1 for line in lines if _DOT_LEADER_RE.search(line))
     return dot_lines / len(lines) > 0.5
+
+
+def _is_appendix_content(chunk: Chunk) -> bool:
+    """Prueft ob ein Chunk unter einem Anhangs-Heading steht.
+
+    Durchsucht die gesamte Heading-Kette (top→leaf). Chunks unter
+    „Anhang" / „Appendix" / „Anlagen" koennen substantiellen Inhalt
+    enthalten (Installationsanleitungen, Testprotokolle).
+    """
+    for heading in chunk.headings:
+        normalized = _strip_section_number(heading.strip().lower())
+        if normalized in _APPENDIX_HEADINGS:
+            return True
+    return False
+
+
+def _is_binary_or_base64(text: str) -> bool:
+    """Erkennt Chunks mit eingebetteten Binaerdaten oder Base64-Streams.
+
+    Zwei Heuristiken:
+    1. Base64-Run-Dichte: Wenn >30% des Textes aus langen alphanumerischen
+       Runs (>=40 Zeichen ohne Leerzeichen) besteht.
+    2. Lesbarkeits-Ratio: Wenn <60% der Zeichen "lesbar" sind (Buchstaben,
+       Ziffern, Whitespace, gaengige Interpunktion).
+
+    Args:
+        text: Chunk-Text.
+
+    Returns:
+        True wenn der Chunk als binaer/garbled erkannt wird.
+    """
+    if len(text) < 50:
+        return False
+
+    # Heuristik 1: Base64-Run-Dichte
+    base64_chars = sum(len(m.group()) for m in _BASE64_RUN_RE.finditer(text))
+    if base64_chars / len(text) > _BASE64_DENSITY_THRESHOLD:
+        return True
+
+    # Heuristik 2: Lesbarkeits-Ratio
+    readable = sum(
+        1 for ch in text
+        if ch.isalnum() or ch in _READABLE_CHARS
+    )
+    if readable / len(text) < _MIN_CHUNK_READABLE_RATIO:
+        return True
+
+    return False
+
+
+def _word_count(text: str) -> int:
+    """Zaehlt Woerter in einem Text (einfacher Split)."""
+    return len(text.split())

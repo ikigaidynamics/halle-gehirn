@@ -56,3 +56,42 @@ dokumente:
     quelltyp: primaer
     vertraulichkeit: offen
     status: final
+
+  - datei: "abschlussarbeiten/Masterarbeit_PhilippSchwier_5009038.pdf"
+    titel: "Analyse zu predictive maintenance im Spreeland anhand von Markpotenzial, verfügbaren Lösungen und Entwicklung von Transfermaterialien"
+    doc_type: abschlussarbeit
+    grad: master
+    bereich: [lehre, transfer]
+    anlage: [predictive_maintenance]
+    ansprechperson: [lautsch]
+    jahr: 2025
+    herkunft: lehrstuhl_at
+    quelltyp: primaer
+    vertraulichkeit: offen
+    status: final
+
+  - datei: "abschlussarbeiten/Masterarbeit_Ronny_Porsch.pdf"
+    titel: "Entwicklung einer plattformübergreifenden Industrial Metaverse-Anwendung für eine produktionsnahe Umgebung"
+    doc_type: abschlussarbeit
+    grad: master
+    bereich: [transfer, infrastruktur]
+    ansprechperson: [berger]
+    autor: [porsch]
+    jahr: 2024
+    herkunft: lehrstuhl_at
+    quelltyp: primaer
+    vertraulichkeit: offen
+    status: final
+
+  - datei: "abschlussarbeiten/Masterarbeit - Shenghan Gao.pdf"
+    titel: "VR-basierte Optimierung von manuellen Montageabläufen in automatisierte Anlage"
+    doc_type: abschlussarbeit
+    grad: master
+    bereich: [forschung, transfer]
+    ansprechperson: [berger]
+    autor: [shenghan]
+    jahr: 2024
+    herkunft: lehrstuhl_at
+    quelltyp: primaer
+    vertraulichkeit: offen
+    status: final
