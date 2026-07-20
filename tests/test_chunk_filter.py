@@ -513,6 +513,139 @@ class TestAppendixRetention:
         assert any("Anhangstext" in c.text for c in result) or len(result) >= 1
 
 
+class TestTailHeadingInFrontMatter:
+    """Tail-Headings im Front-Matter duerfen nicht das Dokument loeschen."""
+
+    def test_erklaerung_before_einleitung_is_front_matter_not_tail(self) -> None:
+        """'Erklärung' VOR '1 Einleitung' → Front-Matter, nicht Tail-Matter.
+
+        Reproduziert den Porsch-Bug: Eigenstaendigkeitserklaerung auf Seite 2
+        loeschte das gesamte Dokument (92→0 Chunks).
+        """
+        chunks = [
+            _make_chunk(
+                "# Masterarbeit\n\nFakultaet 3 Maschinenbau.",
+                index=0,
+                headings=["Masterarbeit"],
+            ),
+            _make_chunk(
+                "## Erklärung\n\nDer Verfasser erklaert. " * 5,
+                index=1,
+                headings=["Masterarbeit", "Erklärung"],
+            ),
+            _make_chunk(
+                "## Kurzfassung\n\nDiese Arbeit untersucht. " * 5,
+                index=2,
+                headings=["Kurzfassung"],
+            ),
+            _make_chunk(
+                "## Abstract\n\nThis thesis investigates. " * 5,
+                index=3,
+                headings=["Abstract"],
+            ),
+            _make_chunk(
+                "## 1 Einleitung\n\nDie Problemstellung ergibt sich. " * 10,
+                index=4,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                "## 2 Methode\n\nEs wird ein quantitativer Ansatz. " * 10,
+                index=5,
+                headings=["2 Methode"],
+            ),
+            _make_chunk(
+                "## 3 Ergebnisse\n\nDie Messungen zeigen. " * 10,
+                index=6,
+                headings=["3 Ergebnisse"],
+            ),
+            _make_chunk(
+                "## Literaturverzeichnis\n\n[1] Mueller 2024. " * 10,
+                index=7,
+                headings=["Literaturverzeichnis"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        texts = " ".join(c.text for c in result)
+        # Kurzfassung + Abstract + Einleitung + Methode + Ergebnisse bleiben
+        assert len(result) >= 4
+        assert "Einleitung" in texts
+        assert "Methode" in texts
+        assert "Ergebnisse" in texts
+        # Literaturverzeichnis (NACH Content-Beginn) wird als Tail verworfen
+        assert "Literaturverzeichnis" not in texts
+        # Erklaerung (VOR Content-Beginn) wurde als Front-Matter verworfen,
+        # NICHT als Tail-Matter
+        assert "Der Verfasser" not in texts
+
+    def test_erklaerung_after_content_is_still_tail(self) -> None:
+        """'Erklärung' NACH dem Content-Bereich ist weiterhin Tail-Matter."""
+        chunks = [
+            _make_chunk(
+                "## 1 Einleitung\n\nText. " * 10,
+                index=0,
+                headings=["1 Einleitung"],
+            ),
+            _make_chunk(
+                "## 2 Ergebnis\n\nResultate. " * 10,
+                index=1,
+                headings=["2 Ergebnis"],
+            ),
+            _make_chunk(
+                "## Erklärung\n\nHiermit versichere ich. " * 5,
+                index=2,
+                headings=["Erklärung"],
+            ),
+        ]
+        result = filter_chunks(chunks, doc_type="abschlussarbeit")
+        assert len(result) == 2
+        assert all("Erklärung" not in c.text for c in result)
+
+
+class TestEmergencyAbort:
+    """Notbremse: Filter deaktiviert sich bei extremer Verwerf-Quote."""
+
+    def test_all_chunks_removed_triggers_abort(self) -> None:
+        """Wenn Filter ALLE Chunks verwerfen wuerde → Notbremse → alle behalten."""
+        # 10 Chunks die alle als too_short fallen wuerden
+        chunks = [_make_chunk("X" * 10, index=i) for i in range(10)]
+        result = filter_chunks(chunks)
+        # Notbremse: alle 10 bleiben, weil 100% Verwurf
+        assert len(result) == 10
+
+    def test_small_batch_no_abort(self) -> None:
+        """Wenige Chunks (<=5) loesen die Notbremse NICHT aus."""
+        chunks = [_make_chunk("X" * 10, index=i) for i in range(3)]
+        result = filter_chunks(chunks)
+        # 3 Chunks, alle zu kurz → normal verworfen (keine Notbremse)
+        assert len(result) == 0
+
+    def test_high_ratio_triggers_abort(self) -> None:
+        """Filter mit >80% Verwurf → Notbremse → alle Chunks behalten."""
+        # 20 Chunks: 18 too_short + 2 OK
+        chunks = [_make_chunk("X" * 10, index=i) for i in range(18)]
+        chunks.extend([
+            _make_chunk("Langer Text " * 20, index=18),
+            _make_chunk("Noch ein langer Text " * 20, index=19),
+        ])
+        result = filter_chunks(chunks)
+        # 18/20 = 90% verworfen → ueber 80% → Notbremse
+        assert len(result) == 20
+
+    def test_normal_ratio_no_abort(self) -> None:
+        """Normale Verwerf-Quote (<80%) → Filter laeuft normal."""
+        chunks = [
+            _make_chunk("X" * 10, index=0),  # too_short
+            _make_chunk("Langer Text " * 20, index=1),
+            _make_chunk("Noch mehr Text " * 20, index=2),
+            _make_chunk("Dritter Text " * 20, index=3),
+            _make_chunk("Vierter Text " * 20, index=4),
+            _make_chunk("Fuenfter Text " * 20, index=5),
+        ]
+        result = filter_chunks(chunks)
+        # 1/6 = 17% verworfen → unter 80% → normal
+        assert len(result) == 5
+
+
 class TestReindexing:
     """Tests fuer die Re-Indizierung nach Filterung."""
 

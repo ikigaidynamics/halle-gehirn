@@ -75,6 +75,7 @@ class IngestStats:
     docs_skipped: int = 0
     docs_unchanged: int = 0
     docs_failed: int = 0
+    docs_filtered_empty: int = 0  # Extraktion ok, aber 0 Chunks nach Filter
     chunks_total: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -478,14 +479,28 @@ def run_ingest(
             for chunk in prep.chunks
         ]
         all_payloads.extend(payloads)
-        stats.docs_success += 1
         stats.chunks_total += len(payloads)
-        logger.info(
-            "ingest_doc_processed",
-            datei=prep.entry.datei,
-            chunks=len(payloads),
-            hash=prep.source_hash[:12],
-        )
+        if payloads:
+            stats.docs_success += 1
+            logger.info(
+                "ingest_doc_processed",
+                datei=prep.entry.datei,
+                chunks=len(payloads),
+                hash=prep.source_hash[:12],
+            )
+        else:
+            stats.docs_filtered_empty += 1
+            stats.errors.append(
+                f"{prep.entry.datei}: 0 Chunks nach Filter "
+                f"(Body: {len(prep.doc.body_md)} Zeichen)"
+            )
+            logger.warning(
+                "ingest_doc_filtered_empty",
+                datei=prep.entry.datei,
+                body_chars=len(prep.doc.body_md),
+                chunks_before_filter=prep.chunks_before_filter,
+                hash=prep.source_hash[:12],
+            )
 
     logger.info(
         "ingest_done",
@@ -494,6 +509,7 @@ def run_ingest(
         skipped=stats.docs_skipped,
         unchanged=stats.docs_unchanged,
         failed=stats.docs_failed,
+        filtered_empty=stats.docs_filtered_empty,
         chunks=stats.chunks_total,
     )
     return all_payloads, stats

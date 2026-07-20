@@ -181,9 +181,14 @@ def filter_chunks(
     min_chars = s.min_chunk_chars
     original_count = len(chunks)
 
-    # Regel 4/5: Front- und Tail-Matter-Indizes bestimmen
+    # Regel 4/5: Front- und Tail-Matter-Indizes bestimmen.
+    # Tail-Matter-Suche startet erst AB front_matter_end, damit
+    # Tail-Headings im Front-Matter (z.B. "Erklärung" auf Seite 2
+    # vor "1 Einleitung") nicht das gesamte Dokument loeschen.
     front_matter_end = _find_front_matter_end(chunks, doc_type)
-    tail_matter_start = _find_tail_matter_start(chunks, doc_type)
+    tail_matter_start = _find_tail_matter_start(
+        chunks, doc_type, content_start=front_matter_end,
+    )
 
     reasons: dict[str, int] = {}
     kept: list[Chunk] = []
@@ -199,6 +204,35 @@ def filter_chunks(
             reasons[reason] = reasons.get(reason, 0) + 1
         else:
             kept.append(chunk)
+
+    # Notbremse: Wenn der Filter mehr als max_filter_ratio der Chunks
+    # verwerfen wuerde, ist etwas grundsaetzlich falsch — lieber Müll
+    # im Index als ein komplett verschwundenes Dokument.
+    max_ratio = s.max_filter_ratio
+    if original_count > 0 and len(kept) == 0 and original_count > 5:
+        logger.warning(
+            "filter_emergency_abort",
+            original=original_count,
+            kept=0,
+            reasons=reasons,
+            action="alle Chunks ungefiltert uebernommen",
+        )
+        # Alle Chunks zurueckgeben, Indizes beibehalten
+        return chunks
+    if (
+        original_count > 5
+        and len(kept) / original_count < (1 - max_ratio)
+    ):
+        logger.warning(
+            "filter_emergency_abort",
+            original=original_count,
+            kept=len(kept),
+            drop_ratio=round(1 - len(kept) / original_count, 2),
+            max_ratio=max_ratio,
+            reasons=reasons,
+            action="alle Chunks ungefiltert uebernommen",
+        )
+        return chunks
 
     # Re-Indizierung
     for idx, chunk in enumerate(kept):
@@ -247,7 +281,10 @@ def _find_front_matter_end(
 
 
 def _find_tail_matter_start(
-    chunks: list[Chunk], doc_type: str,
+    chunks: list[Chunk],
+    doc_type: str,
+    *,
+    content_start: int = 0,
 ) -> int:
     """Findet den Index des ersten Chunks mit Tail-Matter-Heading.
 
@@ -255,13 +292,23 @@ def _find_tail_matter_start(
     AB diesem Index (inkl.) gelten als Tail-Matter und werden verworfen
     (Anhang, Literaturverzeichnis, Erklaerungen).
 
+    Sucht erst AB ``content_start`` (= front_matter_end), damit
+    Tail-Headings im Front-Matter (z.B. Eigenstaendigkeitserklaerung
+    VOR Kapitel 1) nicht das gesamte Dokument als Tail-Matter markieren.
+
+    Args:
+        chunks: Chunk-Liste.
+        doc_type: Dokumenttyp.
+        content_start: Index ab dem gesucht wird (typischerweise
+            ``front_matter_end``).
+
     Returns:
         Index des ersten Tail-Matter-Chunks, oder len(chunks).
     """
     if doc_type not in ("abschlussarbeit", "promotion"):
         return len(chunks)
-    for i, chunk in enumerate(chunks):
-        if _matches_tail_heading(chunk):
+    for i in range(content_start, len(chunks)):
+        if _matches_tail_heading(chunks[i]):
             return i
     return len(chunks)
 

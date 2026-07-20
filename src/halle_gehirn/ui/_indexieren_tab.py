@@ -275,7 +275,7 @@ def _run_indexing_inner(
 
     elapsed_total = time.monotonic() - start_time
     progress_bar.progress(1.0)
-    has_warnings = stats.docs_failed > 0
+    has_warnings = stats.docs_filtered_empty > 0 or stats.docs_failed > 0
     status_container.update(
         label=(
             f"Extraktion abgeschlossen — "
@@ -286,6 +286,13 @@ def _run_indexing_inner(
         expanded=has_warnings,
     )
     _show_ingest_stats(stats)
+
+    if stats.docs_filtered_empty > 0:
+        st.warning(
+            f"{stats.docs_filtered_empty} Dokument(e) lieferten 0 Chunks nach "
+            f"dem Filter — Extraktion war erfolgreich, aber alle Chunks wurden "
+            f"verworfen. Details unter Fehler/Warnungen."
+        )
 
     if not payloads:
         st.warning("Keine Chunks erzeugt — Indexierung übersprungen.")
@@ -445,12 +452,16 @@ def _run_async_embed_with_progress(
 
 def _show_ingest_stats(stats: IngestStats) -> None:
     """Zeigt Ingest-Statistiken im UI an."""
-    cols = st.columns(5)
+    cols = st.columns(6 if stats.docs_filtered_empty else 5)
     cols[0].metric("Gesamt", stats.docs_total)
     cols[1].metric("Erfolgreich", stats.docs_success)
     cols[2].metric("Übersprungen", stats.docs_skipped)
     cols[3].metric("Fehlgeschlagen", stats.docs_failed)
-    cols[4].metric("Chunks", stats.chunks_total)
+    if stats.docs_filtered_empty:
+        cols[4].metric("Gefiltert (0 Chunks)", stats.docs_filtered_empty)
+        cols[5].metric("Chunks", stats.chunks_total)
+    else:
+        cols[4].metric("Chunks", stats.chunks_total)
 
     if stats.errors:
         with st.expander(f"{len(stats.errors)} Fehler/Warnungen"):
