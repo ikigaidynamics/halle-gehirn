@@ -27,6 +27,7 @@ from halle_gehirn.extraction.citation_index import parse_citations
 from halle_gehirn.extraction.docling_extractor import DoclingExtractor
 from halle_gehirn.extraction.glossar import parse_glossar
 from halle_gehirn.extraction.plaintext_extractor import PlaintextExtractor
+from halle_gehirn.extraction.text_sanitizer import sanitize as sanitize_text
 from halle_gehirn.pipeline.chunk_filter import filter_chunks
 from halle_gehirn.pipeline.chunker import Chunk, MarkdownChunker
 from halle_gehirn.pipeline.context_enricher import OllamaContextEnricher
@@ -658,6 +659,11 @@ def _prepare_entry(
     # Kuratierter Manifest-Titel ist die Quelle der Wahrheit (wie im
     # ManualLoader-Fluss) — wichtig u.a. fuer den Kontext-Prompt.
     doc.title = entry.titel
+    # Extraktions-Artefakte bereinigen (OCR-Fehler, Ligatur-Verluste,
+    # getrennte Diakritika) BEVOR Glossar/Chunking/Embeddings laufen.
+    doc.body_md, _ = sanitize_text(doc.body_md, source=entry.datei)
+    for tbl in doc.tables:
+        tbl.markdown, _ = sanitize_text(tbl.markdown, source=entry.datei)
     # Glossar + Zitations-Index VOR dem Chunking extrahieren (die Sections
     # werden spaeter vom Filter gedroppt, aber die Daten sind bereits gesichert)
     glossar = parse_glossar(doc.body_md)
