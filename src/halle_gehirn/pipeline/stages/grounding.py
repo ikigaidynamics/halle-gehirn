@@ -23,12 +23,16 @@ logger = structlog.get_logger(__name__)
 
 _GROUNDING_PROMPT = """\
 /no_think
-Kontext (Quellen):
+Kontext (Quellen mit Metadaten und Text):
 {context}
+
+Die Metadaten jeder Quelle (Titel, Datei, Autor) sind verifizierte Fakten \
+und duerfen zur Stuetzung herangezogen werden. Wenn ein Dateiname einen \
+Autorennamen enthaelt, gilt die Quelle als Arbeit dieses Autors.
 
 Satz: {sentence}
 
-Ist dieser Satz vollstaendig durch den Kontext gestuetzt? \
+Ist dieser Satz durch den Kontext (inkl. Metadaten) gestuetzt? \
 Antworte NUR mit Ja oder Nein."""
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
@@ -142,12 +146,31 @@ class FaithfulnessChecker:
 
 
 def _format_context(hits: list[Any]) -> str:
-    """Formatiert RetrievalHits als Kontext-Text."""
+    """Formatiert RetrievalHits als Kontext-Text.
+
+    Enthaelt Titel, Datei und Autor neben dem Chunk-Text, damit der
+    Grounding-Check auch metadatenbasierte Aussagen (z.B. "die Arbeit
+    von Wang beschreibt...") verifizieren kann.
+    """
     parts: list[str] = []
     for hit in hits:
         payload = getattr(hit, "payload", {}) or {}
         text = payload.get("text", "")
-        if text:
+        if not text:
+            continue
+        header_parts: list[str] = []
+        titel = payload.get("titel")
+        if titel:
+            header_parts.append(f"Titel: {titel}")
+        datei = payload.get("datei")
+        if datei:
+            header_parts.append(f"Datei: {datei}")
+        autor = payload.get("autor")
+        if autor and isinstance(autor, list) and autor:
+            header_parts.append("Autor: " + ", ".join(str(a) for a in autor))
+        if header_parts:
+            parts.append(" · ".join(header_parts) + "\n" + text)
+        else:
             parts.append(text)
     return "\n\n".join(parts)
 

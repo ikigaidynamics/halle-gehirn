@@ -101,7 +101,25 @@ Quellen:
 
 Frage: {query}"""
 
-_SOURCE_TEMPLATE = "[S{idx}] {titel}{location}\n{text}"
+_SOURCE_TEMPLATE = "[S{idx}] {titel}{meta}{location}\n{text}"
+
+
+def _format_meta(payload: dict[str, Any]) -> str:
+    """Baut den Metadaten-Zusatz (Autor, Datei) fuer die Quellenangabe.
+
+    Zeigt dem LLM, aus welchem Dokument und von welchem Autor der Chunk
+    stammt — wichtig fuer autorbasierte Queries ("die Arbeit von Wang").
+    """
+    parts: list[str] = []
+    autor = payload.get("autor")
+    if autor and isinstance(autor, list) and autor:
+        parts.append("Autor: " + ", ".join(str(a) for a in autor))
+    datei = payload.get("datei")
+    if datei:
+        parts.append(f"Datei: {datei}")
+    if not parts:
+        return ""
+    return " [" + " · ".join(parts) + "]"
 
 
 def _format_location(payload: dict[str, Any]) -> str:
@@ -143,6 +161,7 @@ def format_context(hits: list[Any]) -> str:
         parts.append(_SOURCE_TEMPLATE.format(
             idx=i,
             titel=titel,
+            meta=_format_meta(payload),
             location=_format_location(payload),
             text=text,
         ))

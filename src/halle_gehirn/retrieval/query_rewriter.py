@@ -44,18 +44,58 @@ _ELLIPSE_WORDS_RE = re.compile(
     re.IGNORECASE,
 )
 
-_MAX_LENGTH_FACTOR = 3
+_MAX_LENGTH_FACTOR = 2
 _MAX_ABSOLUTE_LEN = 500
 _SHORT_QUERY_WORDS = 6
 
+# Inhaltswörter: alles ab 4 Buchstaben, keine Stoppwörter
+_CONTENT_WORD_RE = re.compile(r"\b[a-zäöüß]{4,}\b", re.IGNORECASE)
+
+# Stoppwörter, die keine inhaltlichen Signale tragen
+_STOP_WORDS: frozenset[str] = frozenset({
+    "aber", "alle", "allem", "allen", "aller", "also", "andere", "anderem",
+    "anderen", "anderer", "anderes", "auch", "bedeutet", "beide", "beiden",
+    "beim", "bereits", "beschreibt", "bevor", "bitte", "dabei", "damit",
+    "dann", "darf", "dass", "dazu", "dein", "deine", "deinem", "deinen",
+    "deiner", "denn", "deren", "derer", "deshalb", "dessen", "dies",
+    "diese", "dieselbe", "diesem", "diesen", "dieser", "doch", "dort",
+    "drin", "eine", "einem", "einen", "einer", "einige", "einigen",
+    "einiger", "einiges", "erst", "etwa", "etwas", "euch", "euer",
+    "eure", "eurem", "euren", "eurer", "falls", "fuer", "gibt",
+    "habe", "haben", "halt", "hast", "hier", "ihre", "ihrem",
+    "ihren", "ihrer", "immer", "indem", "jede", "jedem", "jeden",
+    "jeder", "jedes", "jedoch", "jene", "jenem", "jenen", "jener",
+    "jenes", "kann", "kein", "keine", "keinem", "keinen", "keiner",
+    "mehr", "mein", "meine", "meinem", "meinen", "meiner", "mich",
+    "muss", "nach", "nein", "nicht", "noch", "oder", "ohne", "sein",
+    "seine", "seinem", "seinen", "seiner", "seit", "sich", "sind",
+    "soll", "sondern", "ueber", "unser", "unsere", "unserem", "unseren",
+    "unserer", "unter", "viel", "viele", "vielen", "vielleicht", "voll",
+    "waehrend", "wann", "warum", "weil", "welch", "welche", "welchem",
+    "welchen", "welcher", "wenn", "werde", "werden", "wessen", "wird",
+    "wohl", "wurde", "wurden", "zwischen",
+})
+
+# Maximale Anzahl neuer Inhaltswörter, die der Rewrite einführen darf
+_MAX_NEW_CONTENT_WORDS = 4
+
 _REWRITE_PROMPT = """\
 /no_think
-Du bist ein Query-Rewriter. Formuliere die Nutzerfrage in eine \
-eigenstaendige, praezise Suchanfrage um. Loese Pronomen und Verweise \
-mithilfe des Gespraechsverlaufs auf. Behalte Fachbegriffe und \
-Eigennamen EXAKT bei (UR10e, OPC UA, CP Factory, ...). \
-Erfinde nichts dazu. Antworte NUR mit der umformulierten Frage, \
-ohne Erklaerung.
+Du bist ein Query-Rewriter. Deine EINZIGE Aufgabe: Loese Pronomen und \
+Verweise in der aktuellen Frage auf, damit sie eigenstaendig verstaendlich \
+ist.
+
+REGELN:
+1. Loese NUR Pronomen und Verweise auf. Uebernimm KEINE Themen, \
+Fachbegriffe oder Einschraenkungen aus dem Gespraechsverlauf, die in der \
+neuen Frage nicht referenziert werden.
+2. Wenn die Frage bereits eigenstaendig verstaendlich ist, gib sie \
+UNVERAENDERT zurueck.
+3. Behalte Eigennamen und Fachbegriffe aus der Frage EXAKT bei \
+(UR10e, OPC UA, CP Factory, Zhili Wang, ...).
+4. Fuege NICHTS hinzu, was nicht in der Frage oder im aufgeloesten \
+Bezug steht. Kein Anreichern, kein Kontextualisieren.
+5. Antworte NUR mit der umformulierten Frage, ohne Erklaerung.
 
 Gespraechsverlauf:
 {history}
@@ -148,14 +188,50 @@ class QueryRewriter:
         return _strip_think_tags(content)
 
     def _validate(self, rewritten: str, original: str) -> str:
-        """Validiert das Rewrite-Ergebnis. Faellt auf Original zurueck."""
+        """Validiert das Rewrite-Ergebnis. Faellt auf Original zurueck.
+
+        Guards:
+        1. Leer → Original.
+        2. Laenge > 2x Original (bzw. 500 abs.) → Original.
+        3. Mehr als _MAX_NEW_CONTENT_WORDS neue Inhaltswoerter → Original.
+        4. Eigennamen aus Original fehlen im Rewrite → Original.
+        """
         if not rewritten:
             logger.warning("query_rewrite_empty")
             return original
+
+        # Längen-Guard (2x statt 3x)
         max_len = max(len(original) * _MAX_LENGTH_FACTOR, _MAX_ABSOLUTE_LEN)
         if len(rewritten) > max_len:
             logger.warning("query_rewrite_too_long", length=len(rewritten))
             return original
+
+        # Content-Guard: neue Inhaltswörter zählen
+        orig_words = _extract_content_words(original)
+        rewrite_words = _extract_content_words(rewritten)
+        new_words = rewrite_words - orig_words
+        if len(new_words) > _MAX_NEW_CONTENT_WORDS:
+            logger.warning(
+                "query_rewrite_rejected",
+                reason="too_many_new_words",
+                new_words=sorted(new_words)[:8],
+                count=len(new_words),
+            )
+            return original
+
+        # Eigennamen-Guard: Grossgeschriebene Wörter aus Original müssen erhalten bleiben
+        orig_names = _extract_proper_names(original)
+        if orig_names:
+            rewrite_lower = rewritten.lower()
+            missing = [n for n in orig_names if n.lower() not in rewrite_lower]
+            if missing:
+                logger.warning(
+                    "query_rewrite_rejected",
+                    reason="names_missing",
+                    missing=missing,
+                )
+                return original
+
         return rewritten
 
 
@@ -191,6 +267,30 @@ def _format_history(turns: list[dict[str, str]]) -> str:
         role = "Nutzer" if turn["role"] == "user" else "Assistent"
         parts.append(f"{role}: {turn['content'][:200]}")
     return "\n".join(parts)
+
+
+def _extract_content_words(text: str) -> set[str]:
+    """Extrahiert Inhaltswoerter (>=4 Buchstaben, keine Stoppwoerter)."""
+    words = set(_CONTENT_WORD_RE.findall(text.lower()))
+    return words - _STOP_WORDS
+
+
+def _extract_proper_names(text: str) -> list[str]:
+    """Extrahiert potenzielle Eigennamen (grossgeschriebene Woerter).
+
+    Ignoriert Satzanfaenge (nach Punkt/Fragezeichen/Ausrufezeichen) und
+    das allererste Wort im Text.
+    """
+    # Satzanfänge markieren: Positionen nach Satzzeichen+Leerzeichen
+    sentence_start_positions: set[int] = {0}
+    for m in re.finditer(r"[.!?]\s+", text):
+        sentence_start_positions.add(m.end())
+
+    names: list[str] = []
+    for m in re.finditer(r"\b([A-ZÄÖÜ][a-zäöüß]{2,})\b", text):
+        if m.start() not in sentence_start_positions:
+            names.append(m.group(1))
+    return names
 
 
 from halle_gehirn.llm_utils import strip_think_tags as _strip_think_tags  # noqa: E402
