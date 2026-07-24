@@ -203,6 +203,11 @@ class QueryOrchestrator:
         # 9./10. Validation + Grounding + PII (gemeinsam mit Stream-Pfad)
         final = await self._finalize_answer(answer, hits, confidence)
 
+        # 10b. Confidence ggf. herabstufen (Grounding-Feedback)
+        confidence = _adjust_confidence_for_grounding(
+            confidence, final.grounding, p.settings.grounding_threshold,
+        )
+
         # Memory aktualisiert die BEREINIGTE Antwort (nicht den Rohtext)
         if memory:
             memory.add_turn("user", query)
@@ -259,6 +264,13 @@ class QueryOrchestrator:
         grounding = None
         if p.settings.use_grounding_check and confidence != "rot":
             grounding = await p.grounding_checker.check(cleaned, hits)
+            if grounding and not grounding.grounded:
+                logger.warning(
+                    "grounding_below_threshold",
+                    score=round(grounding.score, 3),
+                    threshold=p.settings.grounding_threshold,
+                    flagged=len(grounding.flagged_sentences),
+                )
 
         # Output-Guardrails (PII-Redaktion)
         pii = p.guardrail.check_output(cleaned)
@@ -372,6 +384,11 @@ class QueryOrchestrator:
         # 9./10. Validation + Grounding + PII
         final = await self._finalize_answer(full_answer, hits, confidence)
 
+        # 10b. Confidence ggf. herabstufen (Grounding-Feedback)
+        confidence = _adjust_confidence_for_grounding(
+            confidence, final.grounding, p.settings.grounding_threshold,
+        )
+
         # Memory speichert die BEREINIGTE Antwort
         if memory:
             memory.add_turn("user", query)
@@ -381,7 +398,10 @@ class QueryOrchestrator:
         sources = _build_sources(hits)
 
         # Done-Event mit Metadaten + finaler (bereinigter) Antwort
-        yield _done_event(confidence, sources, start, final)
+        yield _done_event(
+            confidence, sources, start, final,
+            grounding_threshold=self._pipeline.settings.grounding_threshold,
+        )
 
         # 11. Retrieval-Log (JSONL)
         result = QueryResult(
@@ -494,6 +514,46 @@ def _elapsed_ms(start: float) -> float:
     return (time.monotonic() - start) * 1000
 
 
+def _adjust_confidence_for_grounding(
+    confidence: str,
+    grounding: GroundingResult | None,
+    threshold: float,
+) -> str:
+    """Stuft Confidence herab wenn Grounding-Score unter Threshold.
+
+    Das Confidence-Gate (Stufe 1) basiert nur auf Retrieval-Scores.
+    Wenn der Grounding-Check (Stufe 3) ergibt, dass die Antwort
+    schlecht gestuetzt ist, darf das Label nicht 'gruen' bleiben.
+
+    Regeln:
+      - grounding.score < threshold UND confidence war gruen → gelb
+      - grounding.score < threshold * 0.5 → rot (egal was vorher)
+    """
+    if grounding is None:
+        return confidence
+    if grounding.grounded:
+        return confidence
+    # Grounding unter Threshold
+    if grounding.score < threshold * 0.5:
+        if confidence != "rot":
+            logger.info(
+                "confidence_downgraded",
+                original=confidence,
+                new="rot",
+                grounding_score=round(grounding.score, 3),
+            )
+        return "rot"
+    if confidence == "gruen":
+        logger.info(
+            "confidence_downgraded",
+            original="gruen",
+            new="gelb",
+            grounding_score=round(grounding.score, 3),
+        )
+        return "gelb"
+    return confidence
+
+
 def _outcome(confidence: str, result: QueryResult) -> str:
     """Bestimmt das Outcome fuer das Retrieval-Log."""
     if result.smalltalk:
@@ -510,6 +570,7 @@ def _done_event(
     sources: list[dict[str, Any]],
     start: float,
     final: _FinalizedAnswer | None = None,
+    grounding_threshold: float = 0.5,
 ) -> dict[str, Any]:
     """Baut das finale Done-SSE-Event.
 
@@ -530,6 +591,7 @@ def _done_event(
     if final.grounding is not None:
         event["grounding_score"] = round(final.grounding.score, 3)
         event["grounded"] = final.grounding.grounded
+        event["grounding_threshold"] = grounding_threshold
     if final.validation is not None:
         event["citations_valid"] = len(final.validation.citations_valid)
         event["citations_invalid"] = len(final.validation.citations_invalid)
