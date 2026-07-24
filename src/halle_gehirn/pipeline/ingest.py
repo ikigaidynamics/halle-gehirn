@@ -677,9 +677,15 @@ def _prepare_entry(
     doc.title = entry.titel
     # Extraktions-Artefakte bereinigen (OCR-Fehler, Ligatur-Verluste,
     # getrennte Diakritika) BEVOR Glossar/Chunking/Embeddings laufen.
-    doc.body_md, _ = sanitize_text(doc.body_md, source=entry.datei)
+    # Body als Selbstreferenz-Corpus: bei pymupdf4llm-Fallback liegen
+    # Tabellen inline im body_md — Regel 6b braucht den Corpus-Lookup.
+    doc.body_md, _ = sanitize_text(
+        doc.body_md, source=entry.datei, corpus=doc.body_md,
+    )
     for tbl in doc.tables:
-        tbl.markdown, _ = sanitize_text(tbl.markdown, source=entry.datei)
+        tbl.markdown, _ = sanitize_text(
+            tbl.markdown, source=entry.datei, corpus=doc.body_md,
+        )
     # Glossar + Zitations-Index VOR dem Chunking extrahieren (die Sections
     # werden spaeter vom Filter gedroppt, aber die Daten sind bereits gesichert)
     glossar = parse_glossar(doc.body_md)

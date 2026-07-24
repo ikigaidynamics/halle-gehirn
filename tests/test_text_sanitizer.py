@@ -262,6 +262,123 @@ class TestBrTagFix:
 
 
 # ===================================================================
+# Regel 6: Silbenumbrueche ohne Trennstrich in Tabellenzellen
+# ===================================================================
+
+
+class TestTableSyllableJoin:
+    """Silbenumbrueche ohne Trennstrich in Tabellenzeilen reparieren."""
+
+    # ── Regel 6a: kurze Fragmente (1-3 Buchstaben) ──
+
+    def test_betriebstechnologie(self):
+        text = "| Betriebstechnologi e | Kategorie |"
+        result, stats = sanitize(text)
+        assert "Betriebstechnologie" in result
+        assert stats.table_syllable_joined == 1
+
+    def test_anomalieerkennung(self):
+        text = "| Anomalieerkennun g | Beschreibung |"
+        result, stats = sanitize(text)
+        assert "Anomalieerkennung" in result
+        assert stats.table_syllable_joined == 1
+
+    def test_benutzerfreundliche(self):
+        text = "| benutzerfreundlich e Oberflaeche |"
+        result, stats = sanitize(text)
+        assert "benutzerfreundliche" in result
+        assert stats.table_syllable_joined == 1
+
+    def test_multiple_in_row(self):
+        """Mehrere Fixes in einer Tabellenzeile."""
+        text = "| Betriebstechnologi e | Anomalieerkennun g |"
+        result, stats = sanitize(text)
+        assert "Betriebstechnologie" in result
+        assert "Anomalieerkennung" in result
+        assert stats.table_syllable_joined == 2
+
+    def test_negative_und_die(self):
+        """'und die' darf NICHT zu 'unddie' werden."""
+        text = "| und die Ergebnisse |"
+        result, stats = sanitize(text)
+        assert "und die" in result
+        assert stats.table_syllable_joined == 0
+
+    def test_negative_berichts_und(self):
+        """'Berichts- und' bleibt unveraendert."""
+        text = "| Berichts- und Benachrichtigungsfunktionen |"
+        result, stats = sanitize(text)
+        assert "Berichts- und" in result
+
+    def test_only_table_lines(self):
+        """Nicht-Tabellenzeilen bleiben unberuehrt."""
+        text = "Betriebstechnologi e ist wichtig"
+        result, stats = sanitize(text)
+        assert "Betriebstechnologi e" in result
+        assert stats.table_syllable_joined == 0
+
+    # ── Regel 6b: lange Fragmente (Corpus-Kreuzreferenz) ──
+
+    def test_informationstechnologie_with_corpus(self):
+        """Langes Fragment wird gefixt wenn Wort im Corpus vorkommt."""
+        text = "| Informationstechno logie | Beschreibung |"
+        corpus = "Die Informationstechnologie spielt eine zentrale Rolle."
+        result, stats = sanitize(text, corpus=corpus)
+        assert "Informationstechnologie" in result
+        assert stats.table_syllable_joined == 1
+
+    def test_informationstechnologie_without_corpus(self):
+        """Langes Fragment bleibt wenn Wort NICHT im Corpus vorkommt."""
+        text = "| Informationstechno logie | Beschreibung |"
+        result, stats = sanitize(text, corpus="Kein relevanter Text hier.")
+        assert "Informationstechno logie" in result
+        assert stats.table_syllable_uncertain > 0
+
+    def test_benachrichtigungsfunktionen_with_corpus(self):
+        """Langes Fragment vor langem Rest — Corpus-Match."""
+        text = "| Benachrichtigungsf unktionen |"
+        corpus = "Benachrichtigungsfunktionen und Dashboards"
+        result, stats = sanitize(text, corpus=corpus)
+        assert "Benachrichtigungsfunktionen" in result
+        assert stats.table_syllable_joined == 1
+
+    # ── Inline-Tabelle im Body (pymupdf4llm-Fall) ──
+
+    def test_inline_table_in_body_self_corpus(self):
+        """Body-Text mit Inline-Tabelle: Selbstreferenz-Corpus."""
+        text = (
+            "Die Informationstechnologie hat sich entwickelt.\n"
+            "\n"
+            "| Anbieter | Informationstechno logie |\n"
+            "|---|---|\n"
+            "| SAP | Betriebstechnologi e |\n"
+        )
+        # Selbstreferenz: der Fliesstext enthaelt "Informationstechnologie"
+        result, stats = sanitize(text, corpus=text)
+        assert "| Informationstechnologie |" in result
+        # "Betriebstechnologi e" → 1-Buchstaben-Fragment → Regel 6a greift
+        assert "Betriebstechnologie" in result
+        assert stats.table_syllable_joined == 2
+
+    # ── Sonstiges ──
+
+    def test_stats_counted(self):
+        """Stats werden korrekt gezaehlt."""
+        text = "| Anomalieerkennun g | benutzerfreundlich e |"
+        _, stats = sanitize(text)
+        assert stats.table_syllable_joined == 2
+        d = stats.as_dict()
+        assert d["table_syllable_joined"] == 2
+
+    def test_clean_table_unchanged(self):
+        """Saubere Tabelle bleibt unveraendert."""
+        text = "| Anbieter | Beschreibung | Preis |\n|---|---|---|"
+        result, stats = sanitize(text)
+        assert result == text
+        assert stats.table_syllable_joined == 0
+
+
+# ===================================================================
 # Kombinierte Tests: Ganzer Chunk
 # ===================================================================
 
@@ -328,5 +445,11 @@ class TestStats:
             diacritic_combined=1,
             hyphenation_joined=4,
             br_tags_removed=5,
+            table_syllable_joined=6,
         )
-        assert stats.total == 15
+        assert stats.total == 21
+
+    def test_uncertain_not_in_total(self):
+        """table_syllable_uncertain zaehlt NICHT zum total."""
+        stats = SanitizerStats(table_syllable_uncertain=3)
+        assert stats.total == 0

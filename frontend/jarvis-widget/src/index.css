@@ -107,3 +107,57 @@
   padding: 1px 5px;
   border-radius: 4px;
 }
+
+/* ── Markdown in chunk inspector (react-markdown) ── */
+.jv-chunk-md {
+  overflow-x: auto;
+}
+.jv-chunk-md p {
+  margin: 4px 0;
+}
+.jv-chunk-md p:first-child {
+  margin-top: 0;
+}
+.jv-chunk-md p:last-child {
+  margin-bottom: 0;
+}
+.jv-chunk-md table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  margin: 6px 0;
+  font-size: 0.88em;
+}
+.jv-chunk-md th {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 600;
+}
+.jv-chunk-md th,
+.jv-chunk-md td {
+  padding: 4px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  text-align: left;
+  vertical-align: top;
+}
+.jv-chunk-md h1,
+.jv-chunk-md h2,
+.jv-chunk-md h3,
+.jv-chunk-md h4,
+.jv-chunk-md h5,
+.jv-chunk-md h6 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 8px 0 4px;
+}
+.jv-chunk-md ul,
+.jv-chunk-md ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+.jv-chunk-md code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 1px 5px;
+  border-radius: 4px;
+}

@@ -32,6 +32,8 @@ class SanitizerStats:
     diacritic_combined: int = 0
     hyphenation_joined: int = 0
     br_tags_removed: int = 0
+    table_syllable_joined: int = 0
+    table_syllable_uncertain: int = 0
     ligature_details: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -42,6 +44,7 @@ class SanitizerStats:
             + self.diacritic_combined
             + self.hyphenation_joined
             + self.br_tags_removed
+            + self.table_syllable_joined
         )
 
     def as_dict(self) -> dict[str, int]:
@@ -51,6 +54,8 @@ class SanitizerStats:
             "diacritic_combined": self.diacritic_combined,
             "hyphenation_joined": self.hyphenation_joined,
             "br_tags_removed": self.br_tags_removed,
+            "table_syllable_joined": self.table_syllable_joined,
+            "table_syllable_uncertain": self.table_syllable_uncertain,
             "total": self.total,
         }
         if self.ligature_details:
@@ -188,16 +193,121 @@ def _fix_br_tags(text: str, stats: SanitizerStats) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 6) Silbenumbrueche OHNE Trennstrich in Tabellenzellen
+# ---------------------------------------------------------------------------
+
+# Gaengige deutsche Kurzwoerter (2-3 Buchstaben) die NICHT an ein vorangehendes
+# Wort geklebt werden duerfen.  1-Buchstaben-Fragmente sind immer sicher
+# (kein deutsches Wort ist ein einzelner Kleinbuchstabe).
+_SAFE_SHORT_WORDS: frozenset[str] = frozenset({
+    # 2 Buchstaben
+    "ab", "am", "an", "da", "du", "er", "es", "im", "in",
+    "ja", "je", "ob", "so", "um", "zu",
+    # 3 Buchstaben
+    "als", "auf", "aus", "bei", "bin", "bis", "das", "dem", "den",
+    "der", "des", "die", "dir", "ein", "hat", "ich", "ihm", "ihn",
+    "ihr", "ist", "mal", "man", "mir", "mit", "nie", "nun", "nur",
+    "per", "pro", "sei", "sie", "tun", "und", "uns", "via", "vom",
+    "von", "vor", "war", "was", "wem", "wen", "wer", "wie", "wir",
+    "zog", "zum", "zur",
+})
+
+# Regel 6a: Langer Wortteil + 1 Leerzeichen + kurzes Fragment (1-3 Kleinbuchstaben)
+_TABLE_SHORT_FRAG_RE = re.compile(
+    r"([a-zäöüß]{3,})\s([a-zäöüß]{1,3})(?=\s|[|,;.)\]]|$)"
+)
+
+# Regel 6b: Langer Wortteil + 1 Leerzeichen + laengeres Fragment (≥4 Buchstaben)
+_TABLE_LONG_FRAG_RE = re.compile(
+    r"([a-zäöüß]{3,})\s([a-zäöüß]{4,})(?=\s|[|,;.)\]]|$)"
+)
+
+
+def _fix_table_syllables(
+    text: str, stats: SanitizerStats, *, corpus: str = "",
+) -> str:
+    """Repariert Silbenumbrueche ohne Trennstrich in Tabellenzellen.
+
+    Nur Zeilen die ``|`` enthalten werden bearbeitet (Markdown-Tabellen).
+    Zwei Teil-Regeln:
+      6a) Kurze Fragmente (1-3 Buchstaben): via Blockliste geschuetzt.
+      6b) Lange Fragmente (≥4 Buchstaben): nur wenn das zusammengesetzte
+          Wort im *corpus* vorkommt (Kreuzreferenz).
+
+    Args:
+        text: Markdown-Text (kann Tabellen- und Fliesstext-Zeilen enthalten).
+        stats: Statistik-Container (wird in-place aktualisiert).
+        corpus: Referenz-Text fuer Corpus-Lookup (z.B. ``doc.body_md``).
+    """
+    corpus_lower = corpus.lower() if corpus else ""
+    lines = text.split("\n")
+    changed = False
+
+    for i, line in enumerate(lines):
+        if "|" not in line:
+            continue
+
+        # ── Regel 6a: kurze Fragmente ──
+        def _replace_short(m: re.Match[str]) -> str:
+            nonlocal changed
+            left, frag = m.group(1), m.group(2)
+            if frag in _SAFE_SHORT_WORDS:
+                stats.table_syllable_uncertain += 1
+                logger.debug(
+                    "sanitizer_uncertain",
+                    rule="6a_short_blocklist",
+                    left=left,
+                    fragment=frag,
+                )
+                return m.group()
+            changed = True
+            stats.table_syllable_joined += 1
+            return left + frag
+
+        line = _TABLE_SHORT_FRAG_RE.sub(_replace_short, line)
+
+        # ── Regel 6b: lange Fragmente (Corpus-Lookup) ──
+        if corpus_lower:
+            def _replace_long(m: re.Match[str]) -> str:
+                nonlocal changed
+                left, frag = m.group(1), m.group(2)
+                combined = left + frag
+                if combined.lower() in corpus_lower:
+                    changed = True
+                    stats.table_syllable_joined += 1
+                    return combined
+                stats.table_syllable_uncertain += 1
+                logger.debug(
+                    "sanitizer_uncertain",
+                    rule="6b_corpus_miss",
+                    left=left,
+                    fragment=frag,
+                    combined=combined,
+                )
+                return m.group()
+
+            line = _TABLE_LONG_FRAG_RE.sub(_replace_long, line)
+
+        lines[i] = line
+
+    return "\n".join(lines) if changed else text
+
+
+# ---------------------------------------------------------------------------
 # Oeffentliche API
 # ---------------------------------------------------------------------------
 
 
-def sanitize(text: str, *, source: str = "") -> tuple[str, SanitizerStats]:
+def sanitize(
+    text: str, *, source: str = "", corpus: str = "",
+) -> tuple[str, SanitizerStats]:
     """Bereinigt Extraktions-Artefakte deterministisch.
 
     Args:
         text: Roh-Markdown aus der Extraktion.
         source: Optionaler Dateiname fuer Logging.
+        corpus: Referenz-Text fuer Corpus-basierte Regeln (z.B.
+            ``doc.body_md`` als Kreuzreferenz fuer Tabellen-Silben).
 
     Returns:
         Tuple aus (bereinigter Text, Statistik).
@@ -212,6 +322,7 @@ def sanitize(text: str, *, source: str = "") -> tuple[str, SanitizerStats]:
     text = _fix_diacritics(text, stats)
     text = _fix_hyphenation(text, stats)
     text = _fix_br_tags(text, stats)
+    text = _fix_table_syllables(text, stats, corpus=corpus)
 
     if stats.total > 0:
         logger.info(

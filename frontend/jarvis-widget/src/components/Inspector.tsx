@@ -1,5 +1,7 @@
 import { useState } from "preact/hooks";
 import { FileText, ExternalLink, ChevronDown, ChevronUp } from "lucide-preact";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { selectedSource, selectedMessage, selectedSourceId } from "../state/store";
 import { FIELD_LABELS, displayValue, displayValues } from "../lib/vocab";
 import { confidenceFromString } from "../lib/confidence";
@@ -61,18 +63,23 @@ function AntiHallucinationCard({
   label,
   value,
   valueColor,
+  passed = true,
 }: {
   label: string;
   value: string;
   valueColor: string;
+  passed?: boolean;
 }) {
   return (
     <div class="flex items-center gap-[10px] py-[10px] px-3 rounded-[10px] bg-panel-1 border border-border/70">
       <span
         class="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px]"
-        style={{ background: "rgba(47,158,68,0.15)", color: "#2f9e44" }}
+        style={{
+          background: passed ? "rgba(47,158,68,0.15)" : "rgba(240,96,58,0.15)",
+          color: passed ? "#2f9e44" : "#f0603a",
+        }}
       >
-        &#10003;
+        {passed ? "\u2713" : "\u2717"}
       </span>
       <span class="flex-1 text-[12px] text-[#3a3a3a]">{label}</span>
       <span
@@ -89,21 +96,32 @@ function ExpandableChunk({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
   const sanitized = stripInlineCitations(text);
   const isLong = sanitized.length > CHUNK_COLLAPSE_CHARS;
-  const displayText = isLong && !expanded
-    ? sanitized.slice(0, CHUNK_COLLAPSE_CHARS).replace(/\s+\S*$/, "") + " ..."
-    : sanitized;
+  const collapsed = isLong && !expanded;
 
   return (
     <div>
       <div
-        class="py-[14px] px-[15px] rounded-[11px] text-[12.5px] leading-[1.7] text-[#3a3a3a]"
+        class="relative py-[14px] px-[15px] rounded-[11px] text-[12.5px] leading-[1.7] text-[#3a3a3a]"
         style={{
           background: "rgba(226,0,26,0.04)",
           border: "1px solid rgba(226,0,26,0.15)",
           borderLeft: "3px solid #E2001A",
+          maxHeight: collapsed ? "120px" : "none",
+          overflow: collapsed ? "hidden" : "visible",
         }}
       >
-        {displayText}
+        <div class="jv-chunk-md">
+          <Markdown remarkPlugins={[remarkGfm]}>{sanitized}</Markdown>
+        </div>
+        {collapsed && (
+          <div
+            class="absolute bottom-0 left-0 right-0 h-10 pointer-events-none"
+            style={{
+              background:
+                "linear-gradient(transparent, rgba(226,0,26,0.04))",
+            }}
+          />
+        )}
       </div>
       {isLong && (
         <button
@@ -233,10 +251,8 @@ export function Inspector() {
                 <div class="flex flex-col gap-2">
                   <AntiHallucinationCard
                     label="Confidence-Gate"
-                    value={`${msg.groundingScore?.toFixed(2) ?? "—"} · ${msg.confidence}`}
-                    valueColor={
-                      confidenceFromString(msg.confidence).color
-                    }
+                    value={confidenceFromString(msg.confidence).label}
+                    valueColor={confidenceFromString(msg.confidence).color}
                   />
                   <AntiHallucinationCard
                     label="Citation-Enforcement"
@@ -247,17 +263,26 @@ export function Inspector() {
                     }
                     valueColor="#8a877f"
                   />
-                  <AntiHallucinationCard
-                    label="Grounding · Faithfulness"
-                    value={
-                      msg.groundingScore != null
-                        ? msg.groundingScore.toFixed(2)
-                        : "—"
-                    }
-                    valueColor={
-                      msg.grounded ? "#2f9e44" : "#8a877f"
-                    }
-                  />
+                  {(() => {
+                    const threshold = msg.groundingThreshold ?? 0.5;
+                    const passed = msg.groundingScore != null && msg.groundingScore >= threshold;
+                    return (
+                      <AntiHallucinationCard
+                        label="Grounding · Faithfulness"
+                        value={
+                          msg.groundingScore != null
+                            ? msg.groundingScore.toFixed(2)
+                            : "—"
+                        }
+                        valueColor={
+                          msg.groundingScore != null
+                            ? (passed ? "#2f9e44" : "#f0603a")
+                            : "#8a877f"
+                        }
+                        passed={passed}
+                      />
+                    );
+                  })()}
                   <AntiHallucinationCard
                     label="Quelle-Whitelist"
                     value={source.doc_type || "—"}
