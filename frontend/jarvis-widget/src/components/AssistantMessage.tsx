@@ -169,7 +169,7 @@ export function AssistantMessage({
               style={{ color: conf.color }}
             >
               {conf.label}
-              {groundingScore != null && ` · ${groundingScore.toFixed(2)}`}
+              {groundingScore != null && groundingScore > 0 && ` · Grounding ${groundingScore.toFixed(2)}`}
             </span>
           </div>
         )}

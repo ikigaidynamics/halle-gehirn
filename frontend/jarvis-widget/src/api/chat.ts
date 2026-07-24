@@ -33,6 +33,7 @@ export interface DoneEvent {
   latency_ms: number;
   grounding_score?: number;
   grounded?: boolean;
+  grounding_threshold?: number;
   citations_valid?: number;
   citations_invalid?: number;
   pii_redacted?: boolean;

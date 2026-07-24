@@ -102,8 +102,12 @@ class Settings(BaseSettings):
     api_port: int = 8001
     api_base_url: str = ""  # leer → wird aus api_port abgeleitet
     admin_api_key: str = "change-me-in-production"
-    cors_origins: str = "http://localhost:8501,http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,http://localhost:3001"
     rate_limit_rpm: int = 60
+
+    # ── UI-Ports ──
+    chat_ui_port: int = 3000  # Preact-Widget (Vite dev-server)
+    ingest_ui_port: int = 3001  # Wissensbestand-Frontend (Streamlit)
 
     # ── Halle-Gehirn / Branding ──
     bot_name: str = "Jarvis"

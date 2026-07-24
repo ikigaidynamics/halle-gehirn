@@ -7,9 +7,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      "/chat": "http://localhost:8001",
-      "/health": "http://localhost:8001",
-      "/ready": "http://localhost:8001",
+      "/chat": "http://127.0.0.1:8001",
+      "/health": "http://127.0.0.1:8001",
+      "/ready": "http://127.0.0.1:8001",
     },
   },
   build: {

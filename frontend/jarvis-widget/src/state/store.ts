@@ -10,6 +10,7 @@ export interface Message {
   confidence: string;
   groundingScore?: number;
   grounded?: boolean;
+  groundingThreshold?: number;
   citationsValid?: number;
   citationsInvalid?: number;
   latencyMs?: number;
@@ -75,6 +76,7 @@ export function sendMessage(query: string): void {
           confidence: event.confidence,
           groundingScore: event.grounding_score,
           grounded: event.grounded,
+          groundingThreshold: event.grounding_threshold,
           citationsValid: event.citations_valid,
           citationsInvalid: event.citations_invalid,
           latencyMs: event.latency_ms,
