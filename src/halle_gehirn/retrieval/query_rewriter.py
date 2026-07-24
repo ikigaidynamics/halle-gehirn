@@ -193,11 +193,4 @@ def _format_history(turns: list[dict[str, str]]) -> str:
     return "\n".join(parts)
 
 
-def _strip_think_tags(text: str) -> str:
-    """Entfernt <think>-Bloecke (qwen3 dritte Verteidigungslinie)."""
-    if "<think>" not in text:
-        return text.strip()
-    match = re.search(r"</think>\s*(.*)", text, flags=re.DOTALL)
-    if match and match.group(1).strip():
-        return match.group(1).strip()
-    return text.strip()
+from halle_gehirn.llm_utils import strip_think_tags as _strip_think_tags  # noqa: E402

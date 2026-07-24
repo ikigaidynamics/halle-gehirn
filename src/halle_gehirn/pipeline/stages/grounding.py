@@ -17,6 +17,7 @@ import ollama
 import structlog
 
 from halle_gehirn.config import Settings, get_settings
+from halle_gehirn.llm_utils import strip_think_tags
 
 logger = structlog.get_logger(__name__)
 
@@ -131,7 +132,9 @@ class FaithfulnessChecker:
                 think=False,
                 options={"temperature": 0.0, "num_predict": 8},
             )
-            content = response["message"]["content"].strip().lower()
+            content = response["message"]["content"].strip()
+            content = strip_think_tags(content)
+            content = content.lower()
             return bool(content.startswith("ja"))
         except Exception as exc:
             logger.warning("grounding_sentence_failed", error=str(exc))

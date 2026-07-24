@@ -159,21 +159,4 @@ class OllamaContextEnricher:
             return content
 
 
-def _strip_think_tags(text: str) -> str:
-    """Extrahiert die Antwort nach <think>-Block (qwen3).
-
-    Qwen3 gibt optional ``<think>...</think>Antwort`` aus.
-    Diese Funktion extrahiert die Antwort NACH dem Think-Block.
-    Falls kein Think-Block vorhanden: Text unveraendert zurueck.
-    """
-    if "<think>" not in text:
-        return text.strip()
-    # Antwort nach </think> extrahieren
-    match = re.search(r"</think>\s*(.*)", text, flags=re.DOTALL)
-    if match and match.group(1).strip():
-        return match.group(1).strip()
-    # Fallback: Think-Inhalt als Antwort (falls nur Think-Block)
-    inner = re.search(r"<think>(.*?)</think>", text, flags=re.DOTALL)
-    if inner and inner.group(1).strip():
-        return inner.group(1).strip()
-    return ""
+from halle_gehirn.llm_utils import strip_think_tags as _strip_think_tags  # noqa: E402

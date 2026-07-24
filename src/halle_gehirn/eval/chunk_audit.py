@@ -364,17 +364,7 @@ def _parse_verdict(
     )
 
 
-def _strip_think_tags(text: str) -> str:
-    """Extrahiert die Antwort nach <think>-Block (qwen3)."""
-    if "<think>" not in text:
-        return text.strip()
-    match = re.search(r"</think>\s*(.*)", text, flags=re.DOTALL)
-    if match and match.group(1).strip():
-        return match.group(1).strip()
-    inner = re.search(r"<think>(.*?)</think>", text, flags=re.DOTALL)
-    if inner and inner.group(1).strip():
-        return inner.group(1).strip()
-    return ""
+from halle_gehirn.llm_utils import strip_think_tags as _strip_think_tags  # noqa: E402
 
 
 # ────────────────────────── Phase 3: Synthese ──────────────────────────
