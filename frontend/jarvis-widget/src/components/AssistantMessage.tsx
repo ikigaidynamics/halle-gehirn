@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import type { Source } from "../api/chat";
 import { confidenceFromString } from "../lib/confidence";
 import { markdownToHtml } from "../lib/markdown";
-import { selectSource, selectedSourceId } from "../state/store";
+import { selectSource, selectedSourceId, selectedMsgIdx } from "../state/store";
 
 interface Props {
   content: string;
@@ -10,6 +10,7 @@ interface Props {
   confidence: string;
   groundingScore?: number;
   isStreaming?: boolean;
+  msgIdx: number;
 }
 
 /** Strip the LLM-generated "Quellen:" footer before citation parsing.
@@ -22,6 +23,7 @@ const QUELLEN_FOOTER_RE =
 function renderContentWithCitations(
   rawText: string,
   sources: Source[],
+  msgIdx: number,
 ): JSX.Element[] {
   // Strip "Quellen:" footer first (before [S1] splitting)
   const text = rawText.replace(QUELLEN_FOOTER_RE, "").trimEnd();
@@ -42,13 +44,13 @@ function renderContentWithCitations(
 
     const num = parseInt(match[1], 10);
     const sourceId = `S${num}`;
-    const isActive = selectedSourceId.value === sourceId;
+    const isActive = selectedSourceId.value === sourceId && selectedMsgIdx.value === msgIdx;
     const exists = sources.some((s) => s.id === sourceId);
 
     if (exists) {
       parts.push(
         <button
-          onClick={() => selectSource(sourceId)}
+          onClick={() => selectSource(sourceId, msgIdx)}
           class="inline-flex items-center justify-center w-[18px] h-[18px] p-0 mx-[2px] rounded-full font-mono text-[10px] font-semibold leading-none border-none cursor-pointer align-top"
           style={{
             background: isActive ? "#E2001A" : "rgba(226,0,26,0.14)",
@@ -75,7 +77,7 @@ function renderContentWithCitations(
   return parts;
 }
 
-/** Build source labels with "ebenda" for repeated titles. */
+/** Build source labels — repeated titles show section/page instead of "ebenda". */
 function buildSourceLabels(sources: Source[]): { id: string; label: string }[] {
   const seen = new Map<string, number>(); // title → first occurrence index
   return sources.map((s) => {
@@ -83,8 +85,10 @@ function buildSourceLabels(sources: Source[]): { id: string; label: string }[] {
     const title = s.titel || s.datei || `Quelle ${num}`;
     const prevIdx = seen.get(title);
     if (prevIdx !== undefined) {
-      // Same title seen before — show "ebenda" with reference to first
-      return { id: s.id, label: `${num} ebenda` };
+      // Same title seen before — show abbreviated title + section/page
+      const section = s.breadcrumb || (s.page != null ? `S. ${s.page}` : "");
+      const short = title.length > 35 ? title.slice(0, 32) + "\u2026" : title;
+      return { id: s.id, label: `${num} ${short}${section ? `, ${section}` : ""}` };
     }
     seen.set(title, parseInt(num, 10));
     return { id: s.id, label: `${num} ${title}` };
@@ -97,6 +101,7 @@ export function AssistantMessage({
   confidence,
   groundingScore,
   isStreaming,
+  msgIdx,
 }: Props) {
   const conf = confidence ? confidenceFromString(confidence) : null;
   const sourceLabels = !isStreaming && sources.length > 0
@@ -196,7 +201,7 @@ export function AssistantMessage({
                 <span class="caret-blink" />
               </>
             ) : (
-              renderContentWithCitations(content, sources)
+              renderContentWithCitations(content, sources, msgIdx)
             )}
           </div>
 
@@ -208,13 +213,12 @@ export function AssistantMessage({
               </div>
               <div class="flex flex-col gap-[4px]">
                 {sourceLabels.map(({ id, label }) => {
-                  const isActive = selectedSourceId.value === id;
+                  const isActive = selectedSourceId.value === id && selectedMsgIdx.value === msgIdx;
                   const num = id.replace("S", "");
-                  const isEbenda = label.includes("ebenda");
                   return (
                     <button
                       key={id}
-                      onClick={() => selectSource(id)}
+                      onClick={() => selectSource(id, msgIdx)}
                       class="flex items-center gap-[8px] px-[10px] py-[5px] rounded-lg text-left border-none cursor-pointer w-full"
                       style={{
                         background: isActive
@@ -238,12 +242,9 @@ export function AssistantMessage({
                       </span>
                       <span
                         class="text-[11.5px] truncate"
-                        style={{
-                          color: isEbenda ? "#8a877f" : "#555",
-                          fontStyle: isEbenda ? "italic" : "normal",
-                        }}
+                        style={{ color: "#555" }}
                       >
-                        {isEbenda ? "ebenda" : label.slice(num.length + 1)}
+                        {label.slice(num.length + 1)}
                       </span>
                     </button>
                   );

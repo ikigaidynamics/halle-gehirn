@@ -22,29 +22,26 @@ export const messages = signal<Message[]>([]);
 export const streaming = signal(false);
 export const streamBuffer = signal("");
 export const selectedSourceId = signal<string | null>(null);
+export const selectedMsgIdx = signal<number>(-1);
 export const sessionId = signal(crypto.randomUUID());
 export const healthOk = signal(false);
 export const modelName = signal("qwen3:8b");
 
-/** The currently selected source object (derived). */
+/** The currently selected source object — scoped to the selected message. */
 export const selectedSource = computed<Source | null>(() => {
   const id = selectedSourceId.value;
-  if (!id) return null;
-  for (const msg of messages.value) {
-    const found = msg.sources.find((s) => s.id === id);
-    if (found) return found;
-  }
-  return null;
+  const idx = selectedMsgIdx.value;
+  if (!id || idx < 0) return null;
+  const msg = messages.value[idx];
+  if (!msg) return null;
+  return msg.sources.find((s) => s.id === id) ?? null;
 });
 
-/** The message that owns the currently selected source (for anti-hallucination data). */
+/** The message that owns the currently selected source. */
 export const selectedMessage = computed<Message | null>(() => {
-  const id = selectedSourceId.value;
-  if (!id) return null;
-  for (const msg of messages.value) {
-    if (msg.sources.some((s) => s.id === id)) return msg;
-  }
-  return null;
+  const idx = selectedMsgIdx.value;
+  if (idx < 0) return null;
+  return messages.value[idx] ?? null;
 });
 
 let abortController: AbortController | null = null;
@@ -115,11 +112,18 @@ export function newConversation(): void {
   cancelStream();
   messages.value = [];
   selectedSourceId.value = null;
+  selectedMsgIdx.value = -1;
   sessionId.value = crypto.randomUUID();
 }
 
-export function selectSource(id: string): void {
-  selectedSourceId.value = selectedSourceId.value === id ? null : id;
+export function selectSource(id: string, msgIdx: number): void {
+  if (selectedSourceId.value === id && selectedMsgIdx.value === msgIdx) {
+    selectedSourceId.value = null;
+    selectedMsgIdx.value = -1;
+  } else {
+    selectedSourceId.value = id;
+    selectedMsgIdx.value = msgIdx;
+  }
 }
 
 export async function refreshHealth(): Promise<void> {

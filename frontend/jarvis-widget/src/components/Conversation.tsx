@@ -83,6 +83,7 @@ export function Conversation() {
                 sources={msg.sources}
                 confidence={msg.confidence}
                 groundingScore={msg.groundingScore}
+                msgIdx={i}
               />
             ),
           )}
@@ -99,6 +100,7 @@ export function Conversation() {
               sources={[]}
               confidence=""
               isStreaming
+              msgIdx={messages.value.length}
             />
           )}
         </div>
