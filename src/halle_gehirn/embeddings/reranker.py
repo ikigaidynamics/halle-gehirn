@@ -174,9 +174,28 @@ class LogprobsReranker:
 
 
 def _extract_text(hit: Any) -> str:
-    """Extrahiert den Text aus einem RetrievalHit."""
+    """Extrahiert den Text inkl. Metadaten aus einem RetrievalHit.
+
+    Stellt Titel, Datei und Autor dem Chunk-Text voran, damit der
+    Reranker auch bei autoren- oder titelbezogenen Queries korrekt
+    bewerten kann (z.B. 'Arbeit von Zhili Wang').
+    """
     if hasattr(hit, "payload") and isinstance(hit.payload, dict):
-        return str(hit.payload.get("text", ""))
+        payload = hit.payload
+        header_parts: list[str] = []
+        titel = payload.get("titel")
+        if titel:
+            header_parts.append(f"Titel: {titel}")
+        datei = payload.get("datei")
+        if datei:
+            header_parts.append(f"Datei: {datei}")
+        autor = payload.get("autor")
+        if autor and isinstance(autor, list) and autor:
+            header_parts.append("Autor: " + ", ".join(str(a) for a in autor))
+        text = str(payload.get("text", ""))
+        if header_parts:
+            return "\n".join(header_parts) + "\n\n" + text
+        return text
     return str(hit)
 
 

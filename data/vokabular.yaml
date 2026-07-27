@@ -36,9 +36,12 @@ projekt:
 
 # ── autor · Verfasser des Dokuments (Startbestand) ──
 autor:
+  wang: "Zhili Wang"
+  ruhs: "Alexander Ruhs"
+  abdalla: "Khaled Abdalla"
   schwier: "Philipp Schwier"
   porsch: "Ronny Porsch"
-  shenghan: "Shenghan Gao"
+  gao: "Shenghan Gao"
   # Autoren werden per Manifest-Eintrag zugeordnet.
   # Slug = nachname (lowercase), Label = voller Name.
 

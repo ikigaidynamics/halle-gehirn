@@ -25,6 +25,7 @@ dokumente:
     grad: master
     bereich: [infrastruktur, lehre, forschung]
     ansprechperson: [lautsch]
+    autor: [wang]
     jahr: 2025
     herkunft: lehrstuhl_at
     quelltyp: primaer
@@ -37,6 +38,7 @@ dokumente:
     grad: master
     bereich: [forschung, infrastruktur, transfer]
     ansprechperson: [berger, lautsch]
+    autor: [ruhs]
     jahr: 2025
     herkunft: lehrstuhl_at
     quelltyp: primaer
@@ -51,6 +53,7 @@ dokumente:
     thema: [mensch_maschine_interaktion]
     anlage: [predictive_maintenance]
     ansprechperson: [berger, lautsch]
+    autor: [abdalla]
     jahr: 2025
     herkunft: lehrstuhl_at
     quelltyp: primaer
@@ -64,6 +67,7 @@ dokumente:
     bereich: [lehre, transfer]
     anlage: [predictive_maintenance]
     ansprechperson: [lautsch]
+    autor: [schwier]
     jahr: 2025
     herkunft: lehrstuhl_at
     quelltyp: primaer
@@ -89,7 +93,7 @@ dokumente:
     grad: master
     bereich: [forschung, transfer]
     ansprechperson: [berger]
-    autor: [shenghan]
+    autor: [gao]
     jahr: 2024
     herkunft: lehrstuhl_at
     quelltyp: primaer
