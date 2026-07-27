@@ -5,7 +5,7 @@ Payloads und upserted in Qdrant. --reset loescht/erstellt NUR die
 konfigurierte Collection (QDRANT_COLLECTION), NIEMALS andere.
 
 Usage:
-    python -m scripts.reindex [--reset] [--dry-run] [--delta]
+    python -m scripts.reindex [--reset] [--dry-run] [--delta] [--select DATEI ...]
 """
 from __future__ import annotations
 
@@ -63,6 +63,12 @@ def main() -> None:
         default=None,
         help="Basisverzeichnis fuer Dokumente (Default: data/manual)",
     )
+    parser.add_argument(
+        "--select",
+        nargs="+",
+        metavar="DATEI",
+        help="Nur diese Dokumente verarbeiten (datei-Pfade aus manifest.yaml)",
+    )
     args = parser.parse_args()
 
     configure_logging(dev=True)
@@ -79,11 +85,17 @@ def main() -> None:
         }
         logger.info("delta_mode", indexed_docs=len(skip_hashes))
 
+    selected: set[str] | None = None
+    if args.select:
+        selected = set(args.select)
+        logger.info("select_mode", dateien=sorted(selected))
+
     try:
         payloads, stats = run_ingest(
             manifest_path=args.manifest,
             manual_dir=args.manual_dir,
             settings=settings,
+            selected_dateien=selected,
             skip_hashes=skip_hashes,
         )
     except IngestError as exc:

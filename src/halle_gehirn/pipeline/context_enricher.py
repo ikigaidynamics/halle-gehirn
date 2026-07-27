@@ -30,14 +30,25 @@ _CONTEXT_PROMPT = """\
 {doc_summary}
 </document>
 
-Hier ist der Chunk, den wir im Gesamtdokument einordnen wollen:
+Hier ist der Chunk, den wir im Gesamtdokument verorten wollen:
 <chunk>
 {chunk_text}
 </chunk>
 
 Gib einen kurzen, praegnanten Kontext-Satz (1-2 Saetze, maximal 100 Woerter), \
-der diesen Chunk im Gesamtdokument einordnet. Antworte NUR mit dem Kontext-Satz, \
-ohne Erklaerung oder Prafix."""
+der diesen Chunk im Gesamtdokument verortet.
+
+REGELN:
+1. Beschreibe NUR Inhalte, die EXPLIZIT im Chunk-Text stehen. \
+Erfinde keine Inhalte und fuege keine Themen hinzu.
+2. Fuege KEINE Begriffe, Themen oder Konzepte aus dem Gesamtdokument \
+hinzu, die im Chunk selbst nicht vorkommen.
+3. VERORTEN, nicht anreichern: Nenne Kapitel oder Abschnitt, aber \
+projiziere keine Nachbarthemen auf diesen Chunk.
+4. Wenn der Chunk eine Nebenbemerkung zu einem anderen Thema enthaelt, \
+erwaehne sie NICHT — nur das Hauptthema des Chunks.
+
+Antworte NUR mit dem Kontext-Satz, ohne Erklaerung oder Prafix."""
 
 # Kurzfassungs-/Abstract-Heading im Body — beste Quelle fuer die Doc-Summary
 _SUMMARY_HEADING_RE = re.compile(
@@ -52,19 +63,22 @@ def build_doc_summary(body_md: str, max_chars: int = _SUMMARY_MAX_CHARS) -> str:
     """Baut die Dokument-Zusammenfassung fuer den Kontext-Prompt.
 
     Bevorzugt den Kurzfassungs-/Abstract-Abschnitt (bei Abschlussarbeiten
-    die dichteste Selbstbeschreibung); Fallback: Dokumentanfang.
+    die dichteste Selbstbeschreibung). Wenn kein Abstract vorhanden ist,
+    wird bewusst ein Leerstring zurueckgegeben — die Einleitung eines
+    Katalog-Dokuments listet haeufig ALLE Themen auf und projiziert sie
+    auf jeden einzelnen Chunk (Context-Enrichment-Halluzination).
 
     Args:
         body_md: Body-Markdown des Dokuments.
         max_chars: Maximale Laenge der Zusammenfassung.
 
     Returns:
-        Zusammenfassungs-Text (max. *max_chars* Zeichen).
+        Zusammenfassungs-Text (max. *max_chars* Zeichen), oder Leerstring.
     """
     match = _SUMMARY_HEADING_RE.search(body_md)
     if match:
         return body_md[match.start() : match.start() + max_chars]
-    return body_md[:max_chars]
+    return ""
 
 
 class OllamaContextEnricher:
@@ -144,9 +158,14 @@ class OllamaContextEnricher:
     ) -> str:
         """Erzeugt Kontext-Satz fuer einen einzelnen Chunk."""
         async with self._semaphore:
+            # Kein Abstract: Breadcrumb als Verortung statt Einleitung
+            effective_summary = doc_summary
+            if not doc_summary and chunk.headings:
+                effective_summary = "Abschnitt: " + " > ".join(chunk.headings)
+
             prompt = _CONTEXT_PROMPT.format(
                 doc_title=doc_title,
-                doc_summary=doc_summary,
+                doc_summary=effective_summary,
                 chunk_text=chunk.text[:1000],
             )
             response = await self._client.chat(
