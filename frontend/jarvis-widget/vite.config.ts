@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [preact(), tailwindcss()],
   server: {
     port: 3000,
+    strictPort: true,
     proxy: {
       "/chat": "http://127.0.0.1:8001",
       "/health": "http://127.0.0.1:8001",

@@ -151,6 +151,19 @@ Alle Parameter in `.env` (Vorlage: `.env.example`), typisiert in `config.py`. Ke
 `USE_CONTEXTUAL_RETRIEVAL=true` · `FUSION=rrf` · `CONF_GREEN=0.7`/`CONF_YELLOW=0.4` ·
 `ON_PREM=true` · `BOT_NAME=Jarvis` · `PRIMARY_COLOR=<TODO BTU-Hausfarbe>`.
 
+### Port-Zuordnung (kanonisch)
+
+| Port | Dienst | Startbefehl / Konfigurationsort |
+|---|---|---|
+| **3000** | Chat-Frontend (Preact/Vite) | `frontend/jarvis-widget/vite.config.ts` → `server.port: 3000, strictPort: true` |
+| **3001** | Wissensbestand (Streamlit) | `.streamlit/config.toml` → `port = 3001` |
+| **8001** | API (FastAPI/uvicorn) | `scripts/start_all.ps1` → `$API_PORT = 8001` |
+| 6335 | Qdrant | Extern gestartet |
+| 11434 | Ollama | Extern gestartet (ggf. Remote-GPU) |
+
+Alle drei Dienste starten mit `scripts/start_all.ps1`. Vite hat `strictPort: true` —
+weicht **nicht** stillschweigend auf einen anderen Port aus, sondern bricht mit Fehler ab.
+
 ---
 
 ## 7. Kernprinzipien (gelten für alle Outputs)
