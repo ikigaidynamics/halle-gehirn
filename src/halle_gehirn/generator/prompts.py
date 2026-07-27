@@ -34,7 +34,14 @@ der Quelle angegeben — Seite und Kapitel (z.B. "S. 42, Kap. 3.2").
 8. Verwende NUR URLs, die in den Quellen stehen. Erfinde keine Links.
 9. Paraphrasiere den Quelleninhalt eng. Fuege KEIN Weltwissen, keine \
 Interpretationen und keine Schlussfolgerungen hinzu, die nicht \
-explizit in den Quellen stehen."""
+explizit in den Quellen stehen.
+10. Wenn die Antwort sich auf eine bestimmte Arbeit oder ein bestimmtes \
+Dokument stuetzt, BENENNE Autor und/oder Titel konkret \
+(z.B. "Die Masterarbeit von Abdalla zur Sensorevaluierung zeigt...", \
+"Wang beschreibt in seiner Arbeit..."). Vermeide mehrdeutige \
+Formulierungen wie "die Masterarbeit" oder "das Dokument", wenn \
+mehrere Arbeiten im Kontext stehen. Autor und Titel stehen im \
+Quellen-Header [S1], [S2] etc."""
 
 REFUSAL_TEMPLATE_DE = """\
 Zu dieser Frage liegen mir leider keine ausreichend belegten \
