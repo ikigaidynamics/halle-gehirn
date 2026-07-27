@@ -151,6 +151,8 @@ class ChunkPayload(BaseModel):
     figure_refs: list[str] = Field(default_factory=list)
     figure_captions: list[str] = Field(default_factory=list)
     figure_description: str | None = None  # Reserviert fuer VLM, jetzt None
+    # — Extraktion —
+    extraction_backend: str = "docling_local"
     # — Governance (vorgezogen) —
     vertraulichkeit: Vertraulichkeit = Vertraulichkeit.INTERN
     status: Status = Status.FINAL

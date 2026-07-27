@@ -316,6 +316,7 @@ def build_chunk_payload(
     *,
     glossar: dict[str, str] | None = None,
     citations: dict[str, str] | None = None,
+    extraction_backend: str = "docling_local",
 ) -> ChunkPayload:
     """Baut ein ChunkPayload aus Chunk + Manifest-Eintrag.
 
@@ -375,6 +376,7 @@ def build_chunk_payload(
         citations=citations or {},
         figure_refs=chunk.figure_refs,
         figure_captions=chunk.figure_captions,
+        extraction_backend=extraction_backend,
         vertraulichkeit=Vertraulichkeit(entry.vertraulichkeit),
         status=Status(entry.status),
         grad=Grad(entry.grad) if entry.grad else None,
@@ -471,10 +473,14 @@ def run_ingest(
     # Phase 3: Payloads bauen
     all_payloads: list[ChunkPayload] = []
     for prep in prepared:
+        backend = prep.doc.meta.get(
+            "extraction_backend", "docling_local",
+        )
         payloads = [
             build_chunk_payload(
                 chunk, prep.entry, prep.source_hash, prep.path,
                 glossar=prep.glossar, citations=prep.citations,
+                extraction_backend=backend,
             )
             for chunk in prep.chunks
         ]

@@ -86,8 +86,10 @@ _INLINE_DATA_URI_RE = re.compile(
 # wird dann ein OCR-Retry ausgeloest.
 _MIN_BODY_CHARS_AFTER_STRIP = 200
 
-# PDFs ab dieser Seitenzahl werden zuerst mit pymupdf4llm versucht,
-# da Doclings ONNX-Modelle bei großen PDFs zu std::bad_alloc führen.
+# PDFs ab dieser Seitenzahl werden bei LOKALEM Docling zuerst mit
+# pymupdf4llm versucht, da Doclings ONNX-Modelle bei großen PDFs zu
+# std::bad_alloc führen. Docling Serve (Remote) hat dieses Problem
+# nicht und verarbeitet auch große PDFs korrekt.
 _PYMUPDF_FIRST_THRESHOLD = 25
 
 
@@ -140,9 +142,14 @@ class DoclingExtractor:
             size_bytes=path.stat().st_size,
         )
 
-        # Große PDFs: pymupdf4llm zuerst (Doclings ONNX-Modelle
-        # verursachen std::bad_alloc ab ~20 Seiten)
-        if path.suffix.lower() == ".pdf":
+        # Große PDFs OHNE Docling Serve: pymupdf4llm zuerst
+        # (lokale ONNX-Modelle verursachen std::bad_alloc ab ~20 Seiten).
+        # MIT Docling Serve: immer Serve zuerst — der Server hat genug
+        # RAM und liefert echte Heading-Hierarchie + TableStructure.
+        if (
+            path.suffix.lower() == ".pdf"
+            and not self._settings.docling_serve_url
+        ):
             page_count = _quick_page_count(path)
             if page_count is not None and page_count > _PYMUPDF_FIRST_THRESHOLD:
                 logger.info(
@@ -159,7 +166,7 @@ class DoclingExtractor:
                         path=str(path),
                         error=str(exc),
                     )
-                    # Weiter zu Docling als Fallback
+                    # Weiter zu lokalem Docling als Fallback
 
         try:
             return self._extract_inner(path, do_ocr=do_ocr)
