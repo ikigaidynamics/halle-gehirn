@@ -6,6 +6,8 @@ import type {
   DokumentCreateResponse,
   DokumentDeleteResponse,
   DokumentMetadata,
+  IngestEvent,
+  IngestStartResponse,
   MetadataSuggestion,
   ReadyResponse,
   VokabularCreateResponse,
@@ -133,4 +135,79 @@ export async function deleteDokument(
   });
   if (!resp.ok) throw new Error(await parseError(resp, "Loeschen"));
   return resp.json();
+}
+
+// ── Ingest ──
+
+export async function startIngest(
+  selectedDateien: string[],
+  resetCollection = false,
+): Promise<IngestStartResponse> {
+  const resp = await fetch("/admin/wissen/ingest", {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      selected_dateien: selectedDateien,
+      reset_collection: resetCollection,
+    }),
+  });
+  if (!resp.ok) throw new Error(await parseError(resp, "Ingest starten"));
+  return resp.json();
+}
+
+export function streamIngestProgress(
+  jobId: string,
+  onEvent: (event: IngestEvent) => void,
+  onError: (error: string) => void,
+  onDone: () => void,
+): () => void {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const resp = await fetch(`/admin/wissen/ingest/${jobId}/stream`, {
+        headers,
+        signal: controller.signal,
+      });
+      if (!resp.ok) {
+        onError(await parseError(resp, "Ingest-Stream"));
+        return;
+      }
+      const reader = resp.body?.getReader();
+      if (!reader) {
+        onError("Kein Stream verfuegbar");
+        return;
+      }
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data: ")) continue;
+          try {
+            const event: IngestEvent = JSON.parse(trimmed.slice(6));
+            onEvent(event);
+          } catch {
+            // skip malformed lines
+          }
+        }
+      }
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        onError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      onDone();
+    }
+  })();
+
+  return () => controller.abort();
 }

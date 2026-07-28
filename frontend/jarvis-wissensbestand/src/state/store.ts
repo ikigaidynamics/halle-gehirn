@@ -6,10 +6,14 @@ import {
   fetchVokabular,
   checkReady,
   deleteDokument,
+  startIngest,
+  streamIngestProgress,
 } from "../api/admin";
 import type {
   BestandResponse,
   DokumentDeleteResponse,
+  IngestEvent,
+  IngestStats,
   ReadyResponse,
   VokabularResponse,
 } from "../api/types";
@@ -62,4 +66,59 @@ export async function removeDokument(
   // Refresh bestand after delete
   await loadBestand();
   return result;
+}
+
+// ── Ingest ──
+
+export const ingestRunning = signal(false);
+export const ingestJobId = signal<string | null>(null);
+export const ingestEvents = signal<IngestEvent[]>([]);
+export const ingestError = signal<string | null>(null);
+export const ingestStats = signal<IngestStats | null>(null);
+
+let _cancelStream: (() => void) | null = null;
+
+export async function runIngest(
+  selectedDateien: string[],
+  resetCollection: boolean,
+): Promise<void> {
+  ingestRunning.value = true;
+  ingestError.value = null;
+  ingestEvents.value = [];
+  ingestStats.value = null;
+
+  try {
+    const resp = await startIngest(selectedDateien, resetCollection);
+    ingestJobId.value = resp.job_id;
+
+    _cancelStream = streamIngestProgress(
+      resp.job_id,
+      (event: IngestEvent) => {
+        ingestEvents.value = [...ingestEvents.value, event];
+        if (event.stats) {
+          ingestStats.value = event.stats;
+        }
+      },
+      (error: string) => {
+        ingestError.value = error;
+      },
+      () => {
+        ingestRunning.value = false;
+        _cancelStream = null;
+        // Refresh bestand after ingest completes
+        loadBestand();
+      },
+    );
+  } catch (err) {
+    ingestError.value = err instanceof Error ? err.message : String(err);
+    ingestRunning.value = false;
+  }
+}
+
+export function cancelIngest(): void {
+  if (_cancelStream) {
+    _cancelStream();
+    _cancelStream = null;
+  }
+  ingestRunning.value = false;
 }

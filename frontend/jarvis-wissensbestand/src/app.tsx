@@ -2,6 +2,7 @@ import { useEffect } from "preact/hooks";
 import { Topbar } from "./components/Topbar";
 import { BestandTab } from "./components/BestandTab";
 import { NeuDokumentTab } from "./components/NeuDokumentTab";
+import { IndexierenTab } from "./components/IndexierenTab";
 import { activeTab, refreshReady } from "./state/store";
 
 const TABS = [
@@ -50,11 +51,7 @@ export function App() {
       <div class="flex-1 min-h-0 overflow-hidden">
         {activeTab.value === "bestand" && <BestandTab />}
         {activeTab.value === "neu" && <NeuDokumentTab />}
-        {activeTab.value === "indexieren" && (
-          <div class="flex items-center justify-center h-full text-text-muted text-[14px]">
-            Indexieren — kommt in Etappe D
-          </div>
-        )}
+        {activeTab.value === "indexieren" && <IndexierenTab />}
       </div>
     </div>
   );

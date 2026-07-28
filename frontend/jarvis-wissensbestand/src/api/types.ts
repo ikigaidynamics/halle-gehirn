@@ -130,3 +130,48 @@ export interface DokumentChunksResponse {
   chunk_count: number;
   chunks: ChunkDetail[];
 }
+
+// ── Ingest ──
+
+export interface IngestStartResponse {
+  status: string;
+  job_id: string;
+  message: string;
+}
+
+export interface IngestJobStatus {
+  job_id: string;
+  status: string;
+  progress: number;
+  phase: string;
+  current_datei: string;
+  detail: string;
+  stats: IngestStats | null;
+  error: string | null;
+}
+
+export interface IngestStats {
+  docs_total: number;
+  docs_success: number;
+  docs_skipped: number;
+  docs_unchanged: number;
+  docs_failed: number;
+  chunks_total: number;
+  errors: string[];
+  chunks_embedded?: number;
+  chunks_upserted?: number;
+  chunks_stale_deleted?: number;
+}
+
+export interface IngestEvent {
+  phase: string;
+  datei: string;
+  doc_index: number;
+  doc_total: number;
+  detail: string;
+  chunks_so_far?: number;
+  chunks_total?: number;
+  elapsed_s?: number;
+  status?: string;
+  stats?: IngestStats;
+}
