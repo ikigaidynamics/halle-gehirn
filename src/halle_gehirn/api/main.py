@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from halle_gehirn.api.routes import admin, chat, health
+from halle_gehirn.api.routes import admin, admin_wissen, chat, health
 from halle_gehirn.config import get_settings
 from halle_gehirn.observability.logging_config import configure_logging
 from halle_gehirn.pipeline.factory import build_query_pipeline
@@ -166,6 +166,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(chat.router)
     app.include_router(admin.router)
+    app.include_router(admin_wissen.router)
 
     return app
 
