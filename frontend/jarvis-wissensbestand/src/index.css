@@ -1,0 +1,57 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme {
+  --color-primary: #E2001A;
+  --color-primary-hover: #b30015;
+  --color-primary-soft: rgba(226, 0, 26, 0.08);
+  --color-primary-border: rgba(226, 0, 26, 0.2);
+  --color-primary-border-strong: rgba(226, 0, 26, 0.25);
+  --color-ampel-green: #2f9e44;
+  --color-ampel-yellow: #e3a008;
+  --color-ampel-red: #f0603a;
+  --color-surface: #ffffff;
+  --color-page: #ecebe8;
+  --color-panel-1: #faf9f6;
+  --color-panel-2: #f7f6f3;
+  --color-panel-3: #f5f4f1;
+  --color-panel-4: #f3f2ef;
+  --color-panel-5: #f0eeea;
+  --color-text-primary: #1a1a1a;
+  --color-text-body: #333333;
+  --color-text-secondary: #555555;
+  --color-text-muted: #8a877f;
+  --color-text-faint: #9a978f;
+  --color-text-ghost: #a09d95;
+  --color-text-pale: #b8b5ad;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-light: rgba(0, 0, 0, 0.06);
+  --color-border-medium: rgba(0, 0, 0, 0.12);
+  --font-sans: "Inter Variable", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--color-page);
+  }
+}
+
+.jv-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+.jv-scroll::-webkit-scrollbar-thumb {
+  background: #d0cfca;
+  border-radius: 4px;
+}
+.jv-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
