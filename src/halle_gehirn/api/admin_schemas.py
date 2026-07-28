@@ -122,6 +122,30 @@ class DokumentDeleteResponse(BaseModel):
     deleted_file: bool = False
 
 
+# ── Chunk-Inspektion ──
+
+
+class ChunkDetailResponse(BaseModel):
+    """Ein einzelner Chunk aus Qdrant fuer die Diagnose-Ansicht."""
+
+    chunk_index: int
+    breadcrumb: str | None = None
+    context_prefix: str | None = None
+    text: str = ""
+    page: int | None = None
+    is_table: bool = False
+    token_count: int = 0
+
+
+class DokumentChunksResponse(BaseModel):
+    """Alle Chunks eines Dokuments, sortiert nach chunk_index."""
+
+    datei: str
+    titel: str = ""
+    chunk_count: int = 0
+    chunks: list[ChunkDetailResponse] = Field(default_factory=list)
+
+
 # ── Ingest ──
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -303,6 +303,79 @@ class TestDokumente:
             data = resp.json()
             assert data["deleted_from_manifest"] is True
             assert data["deleted_from_qdrant"] is True
+
+
+class TestDokumentChunks:
+    """Tests fuer GET /admin/wissen/dokumente/{datei}/chunks."""
+
+    _MOCK_CHUNKS: ClassVar[list[dict[str, Any]]] = [
+        {
+            "point_id": "aaa",
+            "payload": {
+                "datei": "abschlussarbeiten/test.pdf",
+                "titel": "Testtitel",
+                "chunk_index": 0,
+                "text": "Erster Chunk Text hier.",
+                "breadcrumb": "1 Einleitung",
+                "context_prefix": "LLM-generierter Kontext.",
+                "page": 5,
+                "table_ref": None,
+            },
+        },
+        {
+            "point_id": "bbb",
+            "payload": {
+                "datei": "abschlussarbeiten/test.pdf",
+                "titel": "Testtitel",
+                "chunk_index": 1,
+                "text": "| A | B |\n|---|---|\n| 1 | 2 |",
+                "breadcrumb": "2 Methodik",
+                "context_prefix": None,
+                "page": 8,
+                "table_ref": "table_001",
+            },
+        },
+    ]
+
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.get_chunks_by_datei",
+        return_value=_MOCK_CHUNKS,
+    )
+    def test_chunks_returns_details(self, _mock: MagicMock) -> None:
+        with _patched_app() as client:
+            resp = client.get(
+                "/admin/wissen/dokumente/abschlussarbeiten/test.pdf/chunks",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["datei"] == "abschlussarbeiten/test.pdf"
+            assert data["chunk_count"] == 2
+            assert data["chunks"][0]["chunk_index"] == 0
+            assert data["chunks"][0]["breadcrumb"] == "1 Einleitung"
+            assert data["chunks"][0]["context_prefix"] == "LLM-generierter Kontext."
+            assert data["chunks"][0]["is_table"] is False
+            assert data["chunks"][0]["token_count"] > 0
+            assert data["chunks"][1]["is_table"] is True
+
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.get_chunks_by_datei",
+        return_value=[],
+    )
+    def test_chunks_not_found(self, _mock: MagicMock) -> None:
+        with _patched_app() as client:
+            resp = client.get(
+                "/admin/wissen/dokumente/nonexistent/file.pdf/chunks",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 404
+
+    def test_chunks_without_key_returns_401(self) -> None:
+        with _patched_app() as client:
+            resp = client.get(
+                "/admin/wissen/dokumente/test.pdf/chunks",
+            )
+            assert resp.status_code == 401
 
 
 class TestIngest:

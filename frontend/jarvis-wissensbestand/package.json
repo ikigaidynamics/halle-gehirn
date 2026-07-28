@@ -12,7 +12,9 @@
     "@fontsource-variable/inter": "^5.1.1",
     "@fontsource-variable/jetbrains-mono": "^5.1.2",
     "@preact/signals": "^2.0.2",
-    "preact": "^10.25.4"
+    "preact": "^10.25.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.9.4",

@@ -1,5 +1,12 @@
 import { useEffect } from "preact/hooks";
-import { bestandData, bestandLoading, bestandError, loadBestand } from "../state/store";
+import { signal } from "@preact/signals";
+import { bestandData, bestandLoading, bestandError, loadBestand, removeDokument } from "../state/store";
+import { ChunkViewer, openChunkViewer } from "./ChunkViewer";
+
+// Delete confirmation state
+const confirmDelete = signal<{ datei: string; titel: string; chunks: number } | null>(null);
+const deleting = signal(false);
+const deleteError = signal<string | null>(null);
 
 export function BestandTab() {
   useEffect(() => {
@@ -27,6 +34,21 @@ export function BestandTab() {
   const data = bestandData.value;
   if (!data) return null;
 
+  async function doDelete() {
+    const target = confirmDelete.value;
+    if (!target) return;
+    deleting.value = true;
+    deleteError.value = null;
+    try {
+      await removeDokument(target.datei, true);
+      confirmDelete.value = null;
+    } catch (err) {
+      deleteError.value = err instanceof Error ? err.message : String(err);
+    } finally {
+      deleting.value = false;
+    }
+  }
+
   return (
     <div class="flex gap-6 p-6 h-full overflow-hidden">
       {/* Main: Document Table */}
@@ -43,6 +65,7 @@ export function BestandTab() {
                 <th class="py-[10px] px-[14px] font-semibold w-[150px]">Bereich</th>
                 <th class="py-[10px] px-[14px] font-semibold w-[80px] text-right">Chunks</th>
                 <th class="py-[10px] px-[14px] font-semibold w-[90px] text-center">Status</th>
+                <th class="py-[10px] px-[14px] font-semibold w-[70px]" />
               </tr>
             </thead>
             <tbody>
@@ -58,12 +81,28 @@ export function BestandTab() {
                     class="border-t border-border-light hover:bg-panel-1 transition-colors"
                   >
                     <td class="py-[10px] px-[14px]">
-                      <div class="font-medium text-text-primary truncate">
-                        {entry.titel}
-                      </div>
-                      <div class="text-[11px] text-text-muted font-mono truncate mt-[2px]">
-                        {entry.datei}
-                      </div>
+                      {entry.is_indexed ? (
+                        <button
+                          onClick={() => openChunkViewer(entry.datei)}
+                          class="block w-full text-left bg-transparent border-none p-0 cursor-pointer group"
+                        >
+                          <div class="font-medium text-text-primary truncate group-hover:text-[#E2001A] transition-colors">
+                            {entry.titel}
+                          </div>
+                          <div class="text-[11px] text-text-muted font-mono truncate mt-[2px]">
+                            {entry.datei}
+                          </div>
+                        </button>
+                      ) : (
+                        <div>
+                          <div class="font-medium text-text-primary truncate">
+                            {entry.titel}
+                          </div>
+                          <div class="text-[11px] text-text-muted font-mono truncate mt-[2px]">
+                            {entry.datei}
+                          </div>
+                        </div>
+                      )}
                     </td>
                     <td class="py-[10px] px-[14px] text-text-secondary">
                       {entry.doc_type_label}
@@ -94,6 +133,25 @@ export function BestandTab() {
                         />
                         {entry.is_indexed ? "Indexiert" : "Pending"}
                       </span>
+                    </td>
+                    <td class="py-[10px] px-[14px]">
+                      <button
+                        onClick={() => {
+                          confirmDelete.value = {
+                            datei: entry.datei,
+                            titel: entry.titel,
+                            chunks,
+                          };
+                          deleteError.value = null;
+                        }}
+                        class="py-[4px] px-[8px] rounded-md text-[11px] font-medium border cursor-pointer transition-colors bg-transparent"
+                        style={{
+                          borderColor: "rgba(240,96,58,0.3)",
+                          color: "#f0603a",
+                        }}
+                      >
+                        Entfernen
+                      </button>
                     </td>
                   </tr>
                 );
@@ -150,6 +208,67 @@ export function BestandTab() {
           {bestandLoading.value ? "Lade..." : "Aktualisieren"}
         </button>
       </div>
+
+      {/* Chunk Viewer Overlay */}
+      <ChunkViewer />
+
+      {/* Delete Confirmation Dialog */}
+      {confirmDelete.value && (
+        <div
+          class="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: "rgba(0,0,0,0.35)" }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) confirmDelete.value = null;
+          }}
+        >
+          <div class="bg-surface rounded-xl p-6 shadow-lg w-[420px] border border-border">
+            <h3 class="text-[15px] font-bold text-text-primary mb-3">
+              Dokument entfernen?
+            </h3>
+            <p class="text-[13px] text-text-body mb-2">
+              <span class="font-semibold">{confirmDelete.value.titel}</span>
+            </p>
+            <p class="text-[12px] text-text-muted font-mono mb-3">
+              {confirmDelete.value.datei}
+            </p>
+            <div class="p-3 rounded-lg mb-4 text-[12px]"
+              style={{
+                background: "rgba(240,96,58,0.06)",
+                border: "1px solid rgba(240,96,58,0.2)",
+                color: "#c0392b",
+              }}>
+              {confirmDelete.value.chunks > 0
+                ? `${confirmDelete.value.chunks} Chunk${confirmDelete.value.chunks !== 1 ? "s" : ""} werden aus Qdrant geloescht. Manifest-Eintrag und Datei werden entfernt.`
+                : "Manifest-Eintrag und Datei werden entfernt (keine Chunks indexiert)."}
+            </div>
+
+            {deleteError.value && (
+              <div class="p-3 rounded-lg mb-3 text-[12px]"
+                style={{ background: "rgba(240,96,58,0.08)", border: "1px solid rgba(240,96,58,0.28)", color: "#c0392b" }}>
+                {deleteError.value}
+              </div>
+            )}
+
+            <div class="flex gap-3 justify-end">
+              <button
+                onClick={() => { confirmDelete.value = null; deleteError.value = null; }}
+                class="py-[8px] px-[16px] rounded-lg text-[13px] font-medium border cursor-pointer bg-transparent"
+                style={{ borderColor: "rgba(0,0,0,0.12)", color: "#555" }}
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={doDelete}
+                disabled={deleting.value}
+                class="py-[8px] px-[16px] rounded-lg text-[13px] font-semibold text-white border-none cursor-pointer"
+                style={{ background: deleting.value ? "#ccc" : "#f0603a" }}
+              >
+                {deleting.value ? "Loeschen..." : "Endgueltig entfernen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

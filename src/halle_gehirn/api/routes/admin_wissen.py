@@ -17,6 +17,8 @@ from starlette.responses import StreamingResponse
 
 from halle_gehirn.api.admin_schemas import (
     BestandResponse,
+    ChunkDetailResponse,
+    DokumentChunksResponse,
     DokumentCreateResponse,
     DokumentDeleteResponse,
     IndexedDocResponse,
@@ -49,6 +51,7 @@ from halle_gehirn.manifest.editor import (
 from halle_gehirn.pipeline.ingest import ManifestEntry, compute_source_hash
 from halle_gehirn.vector_store.qdrant_client import (
     delete_by_source_hash,
+    get_chunks_by_datei,
     list_indexed_documents,
 )
 
@@ -292,6 +295,50 @@ async def delete_dokument(
         deleted_from_qdrant=deleted_from_qdrant,
         deleted_chunks=deleted_chunks,
         deleted_file=file_deleted,
+    )
+
+
+# ── GET /dokumente/{datei}/chunks ──
+
+
+@router.get(
+    "/dokumente/{datei:path}/chunks",
+    response_model=DokumentChunksResponse,
+)
+async def get_dokument_chunks(
+    datei: str,
+    _key: Annotated[str, Depends(verify_api_key)],
+) -> DokumentChunksResponse:
+    """Liefert alle Chunks eines Dokuments aus Qdrant (Diagnose-Ansicht)."""
+    raw_chunks = get_chunks_by_datei(datei)
+    if not raw_chunks:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Keine Chunks fuer '{datei}' in Qdrant gefunden.",
+        )
+
+    titel = ""
+    details: list[ChunkDetailResponse] = []
+    for item in raw_chunks:
+        p = item.get("payload", {})
+        if not titel:
+            titel = p.get("titel", "")
+        text = p.get("text", "")
+        details.append(ChunkDetailResponse(
+            chunk_index=p.get("chunk_index", 0),
+            breadcrumb=p.get("breadcrumb"),
+            context_prefix=p.get("context_prefix"),
+            text=text,
+            page=p.get("page"),
+            is_table=p.get("table_ref") is not None,
+            token_count=len(text.split()),
+        ))
+
+    return DokumentChunksResponse(
+        datei=datei,
+        titel=titel,
+        chunk_count=len(details),
+        chunks=details,
     )
 
 

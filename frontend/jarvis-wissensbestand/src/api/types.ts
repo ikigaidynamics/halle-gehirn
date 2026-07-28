@@ -44,3 +44,89 @@ export interface ReadyResponse {
   qdrant: boolean;
   ollama: boolean;
 }
+
+// ── Vokabular ──
+
+export interface VokabularResponse {
+  choices: Record<string, Record<string, string>>;
+  sorten: string[];
+}
+
+// ── Metadata Detection ──
+
+export interface MetadataSuggestion {
+  titel: string;
+  doc_type: string | null;
+  grad: string | null;
+  bereich: string[];
+  herkunft: string;
+  quelltyp: string;
+  vertraulichkeit: string;
+  status: string;
+  jahr: number | null;
+  sorte: string | null;
+  autor_vorschlag: string | null;
+  ansprechperson_vorschlag: string[];
+  studiengang: string | null;
+}
+
+// ── Dokument CRUD ──
+
+export interface DokumentMetadata {
+  sorte: string;
+  titel: string;
+  doc_type: string;
+  bereich: string[];
+  herkunft: string;
+  quelltyp: string;
+  vertraulichkeit: string;
+  status: string;
+  jahr: number | null;
+  grad: string | null;
+  thema: string[];
+  anlage: string[];
+  projekt: string[];
+  ansprechperson: string[];
+  autor: string[];
+}
+
+export interface DokumentCreateResponse {
+  status: string;
+  datei: string;
+  titel: string;
+}
+
+export interface DokumentDeleteResponse {
+  status: string;
+  datei: string;
+  deleted_from_manifest: boolean;
+  deleted_from_qdrant: boolean;
+  deleted_chunks: number;
+  deleted_file: boolean;
+}
+
+export interface VokabularCreateResponse {
+  status: string;
+  facet: string;
+  slug: string;
+  label: string;
+}
+
+// ── Chunk-Inspektion ──
+
+export interface ChunkDetail {
+  chunk_index: number;
+  breadcrumb: string | null;
+  context_prefix: string | null;
+  text: string;
+  page: number | null;
+  is_table: boolean;
+  token_count: number;
+}
+
+export interface DokumentChunksResponse {
+  datei: string;
+  titel: string;
+  chunk_count: number;
+  chunks: ChunkDetail[];
+}
