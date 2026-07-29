@@ -323,7 +323,7 @@ async def get_dokument_chunks(
         p = item.get("payload", {})
         if not titel:
             titel = p.get("titel", "")
-        text = p.get("text", "")
+        text = p.get("text_raw") or p.get("text", "")
         details.append(ChunkDetailResponse(
             chunk_index=p.get("chunk_index", 0),
             breadcrumb=p.get("breadcrumb"),
