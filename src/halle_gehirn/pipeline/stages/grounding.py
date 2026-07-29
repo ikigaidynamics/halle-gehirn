@@ -36,6 +36,8 @@ Ist dieser Satz durch den Kontext (inkl. Metadaten) gestuetzt? \
 Antworte NUR mit Ja oder Nein."""
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+_BULLET_RE = re.compile(r"\n\s*[-*•]\s+|\n\s*\d+\.\s+")
+_FOOTER_RE = re.compile(r"\n\s*Quellen?\s*:", re.IGNORECASE)
 
 
 @dataclass
@@ -125,7 +127,7 @@ class FaithfulnessChecker:
     ) -> bool:
         """Prueft einen einzelnen Satz gegen den Kontext."""
         prompt = _GROUNDING_PROMPT.format(
-            context=context[:3000],
+            context=context,
             sentence=sentence,
         )
         try:
@@ -176,8 +178,25 @@ def _format_context(hits: list[Any]) -> str:
 
 
 def _extract_sentences(text: str) -> list[str]:
-    """Extrahiert nicht-triviale Saetze aus dem Text."""
-    sentences = _SENTENCE_SPLIT.split(text)
+    """Extrahiert nicht-triviale Saetze aus dem Text.
+
+    Behandelt Bullet-Points als eigene Saetze und schneidet
+    den Quellen-Footer ab (keine inhaltliche Aussage).
+    """
+    # 1. Quellen-Footer abschneiden
+    footer = _FOOTER_RE.search(text)
+    if footer:
+        text = text[:footer.start()]
+
+    # 2. Auf Bullet-Grenzen splitten
+    parts = _BULLET_RE.split(text)
+
+    # 3. Jedes Teil auf Satzgrenzen splitten
+    sentences: list[str] = []
+    for part in parts:
+        sentences.extend(_SENTENCE_SPLIT.split(part))
+
+    # 4. Triviale Fragmente und Citation-Header filtern
     return [
         s.strip() for s in sentences
         if len(s.strip()) >= 20
