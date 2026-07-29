@@ -65,9 +65,7 @@ export function IndexierenTab() {
   const lastEvent = ingestEvents.value.length > 0
     ? ingestEvents.value[ingestEvents.value.length - 1]
     : null;
-  const isDone = lastEvent?.status === "completed";
   const isFailed = lastEvent?.status === "failed";
-  const progressPct = isDone ? 100 : computeProgress(lastEvent);
 
   return (
     <div class="flex gap-6 p-6 h-full overflow-hidden">
@@ -253,26 +251,13 @@ export function IndexierenTab() {
               Fortschritt
             </div>
 
-            {/* Progress Bar */}
-            <div class="w-full h-[6px] bg-panel-4 rounded-full overflow-hidden mb-2">
-              <div
-                class="h-full rounded-full transition-all duration-300"
-                style={{
-                  width: `${progressPct}%`,
-                  background: isFailed
-                    ? "#f0603a"
-                    : isDone
-                      ? "#2f9e44"
-                      : "#E2001A",
-                }}
-              />
-            </div>
-            <div class="flex justify-between text-[11px] text-text-muted mb-3">
-              <span>{progressPct}%</span>
-              {lastEvent?.elapsed_s != null && (
-                <span>{formatDuration(lastEvent.elapsed_s)}</span>
-              )}
-            </div>
+            {/* Phase Steps */}
+            <PhaseSteps currentPhase={lastEvent?.phase ?? null} failed={isFailed} />
+            {lastEvent?.elapsed_s != null && (
+              <div class="text-[11px] text-text-muted text-right mb-3">
+                {formatDuration(lastEvent.elapsed_s)}
+              </div>
+            )}
 
             {/* Phase + Detail */}
             {lastEvent && (
@@ -453,51 +438,76 @@ function StatRow({
 
 // ── Helpers ──
 
+/** Pipeline phases in execution order. */
+const PHASES = ["extract", "chunk", "enrich", "embed", "upsert"] as const;
+
+const PHASE_LABELS: Record<string, string> = {
+  extract: "Extraktion",
+  chunk: "Chunking",
+  enrich: "Anreicherung",
+  embed: "Embedding",
+  upsert: "Speichern",
+};
+
 /**
- * Computes overall progress percentage from the last SSE event.
- *
- * The pipeline has two axes: per-document phases (extract, chunk) and
- * global phases (enrich, embed, upsert). For per-doc phases, progress
- * is (doc_index - 1 + phase_fraction) / doc_total mapped into the
- * per-doc portion (0-50%). Global phases (enrich, embed, upsert) map
- * to the remaining 50-95%.
+ * Segmented phase indicator. Each phase is one segment; completed phases
+ * are filled, the active phase pulses, future phases are empty. No fake
+ * percentages — shows exactly where the pipeline stands.
  */
-function computeProgress(event: IngestEvent | null): number {
-  if (!event) return 0;
+function PhaseSteps({ currentPhase, failed }: { currentPhase: string | null; failed: boolean }) {
+  const activeIdx = currentPhase === "done"
+    ? PHASES.length
+    : PHASES.indexOf(currentPhase as typeof PHASES[number]);
 
-  // Phase weights: per-doc phases take 0-50%, global phases 50-95%
-  const PHASE_PROGRESS: Record<string, number> = {
-    reset: 0,
-    extract: 5,     // just started extracting
-    chunk: 15,      // extracting done, chunking
-    enrich: 50,     // all docs prepared, enriching
-    embed: 65,      // embedding
-    upsert: 85,     // upserting to Qdrant
-    done: 100,
-    error: 0,
-  };
-
-  const phase = event.phase;
-  const baseProgress = PHASE_PROGRESS[phase] ?? 0;
-
-  // For per-doc phases (extract, chunk): interpolate within the doc range
-  if ((phase === "extract" || phase === "chunk") && event.doc_total > 0) {
-    const phaseStart = PHASE_PROGRESS["extract"]; // 5
-    const phaseEnd = PHASE_PROGRESS["enrich"];     // 50
-    const phaseRange = phaseEnd - phaseStart;      // 45
-
-    // doc_index is 1-based from the backend. During extract, the doc is
-    // in progress (not complete), so use (doc_index - 1) as completed docs.
-    // During chunk, the extraction for this doc is done.
-    const completedDocs = phase === "extract"
-      ? event.doc_index - 1
-      : event.doc_index;
-    const docFraction = Math.min(completedDocs / event.doc_total, 1);
-
-    return Math.round(phaseStart + docFraction * phaseRange);
-  }
-
-  return Math.round(baseProgress);
+  return (
+    <div class="flex flex-col gap-[6px] mb-3">
+      {/* Segmented bar */}
+      <div class="flex gap-[3px]">
+        {PHASES.map((phase, i) => {
+          const done = i < activeIdx || currentPhase === "done";
+          const active = i === activeIdx && !failed;
+          return (
+            <div
+              key={phase}
+              class={`h-[6px] flex-1 rounded-full transition-all duration-300${active ? " animate-pulse" : ""}`}
+              style={{
+                background: failed && i === activeIdx
+                  ? "#f0603a"
+                  : done
+                    ? "#2f9e44"
+                    : active
+                      ? phaseColor(phase, 1)
+                      : "var(--color-panel-4, rgba(0,0,0,0.06))",
+              }}
+            />
+          );
+        })}
+      </div>
+      {/* Phase labels */}
+      <div class="flex gap-[3px]">
+        {PHASES.map((phase, i) => {
+          const done = i < activeIdx || currentPhase === "done";
+          const active = i === activeIdx;
+          return (
+            <div
+              key={phase}
+              class="flex-1 text-center text-[9px] leading-tight"
+              style={{
+                color: done
+                  ? "#2f9e44"
+                  : active
+                    ? phaseColor(phase, 1)
+                    : "var(--color-text-muted, #999)",
+                fontWeight: active ? 600 : 400,
+              }}
+            >
+              {PHASE_LABELS[phase]}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function phaseColor(phase: string, alpha: number): string {
