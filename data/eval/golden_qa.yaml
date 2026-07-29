@@ -1,0 +1,38 @@
+# Golden Q&A — Baseline-Fragen fuer die Eval-Schleife
+#
+# Felder je Frage:
+#   expected_keywords:        Stichworte die vorkommen MUESSEN (case-insensitive)
+#   forbidden_keywords:       Stichworte die NICHT vorkommen duerfen (Refusal-Pruefung)
+#   expected_confidence:      Ampel-Erwartung (gruen/gelb/rot)
+#   expected_source_contains: Teilstring im datei-Feld der Top-Source
+
+questions:
+  - id: q1_mobile_roboter
+    query: "Was kann das mobile Robotersystem?"
+    expected_keywords: ["mobil", "Roboter"]
+    expected_confidence: gruen
+    expected_source_contains: "Demonstratoren"
+
+  - id: q2_mrk_demonstratoren
+    query: "Welche Demonstratoren gibt es zur Mensch-Roboter-Kollaboration?"
+    expected_keywords: ["Mensch-Roboter", "Kollaboration"]
+    expected_confidence: gruen
+    expected_source_contains: "Demonstratoren"
+
+  - id: q3_predictive_maintenance
+    query: "Welche Anbieter von Predictive-Maintenance-Loesungen gibt es?"
+    expected_keywords: ["Predictive", "Maintenance"]
+    expected_confidence: gruen
+    expected_source_contains: ["Abdalla", "Schwier"]
+
+  - id: q4_raise3d
+    query: "Wie funktioniert die additive Fertigung mit dem Raise3D?"
+    expected_keywords: ["Raise3D", "additiv"]
+    expected_confidence: gruen
+    expected_source_contains: "Demonstratoren"
+
+  - id: q5_siemens_umsatz
+    query: "Wie hoch ist der Jahresumsatz von Siemens?"
+    expected_keywords: []
+    forbidden_keywords: ["Milliarden", "Mrd", "Umsatz betrug", "Umsatz lag"]
+    expected_confidence: rot
