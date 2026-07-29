@@ -122,6 +122,8 @@ export interface ChunkDetail {
   page: number | null;
   is_table: boolean;
   token_count: number;
+  source_hash: string;
+  disabled: boolean;
 }
 
 export interface DokumentChunksResponse {

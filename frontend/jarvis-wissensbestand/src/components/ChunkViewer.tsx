@@ -1,7 +1,7 @@
 import { signal } from "@preact/signals";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { fetchDokumentChunks } from "../api/admin";
+import { fetchDokumentChunks, toggleChunkDisabled } from "../api/admin";
 import type { DokumentChunksResponse } from "../api/types";
 
 // ── State ──
@@ -9,6 +9,7 @@ const chunksData = signal<DokumentChunksResponse | null>(null);
 const chunksLoading = signal(false);
 const chunksError = signal<string | null>(null);
 const selectedDatei = signal<string | null>(null);
+const togglingChunk = signal<number | null>(null);
 
 export function openChunkViewer(datei: string) {
   selectedDatei.value = datei;
@@ -26,12 +27,28 @@ export function closeChunkViewer() {
   chunksData.value = null;
 }
 
+function handleToggle(datei: string, chunkIndex: number, currentDisabled: boolean) {
+  togglingChunk.value = chunkIndex;
+  toggleChunkDisabled(datei, chunkIndex, !currentDisabled)
+    .then(() => {
+      // Reload chunks to get fresh state
+      fetchDokumentChunks(datei)
+        .then((data) => { chunksData.value = data; })
+        .catch(() => {});
+    })
+    .catch((err) => {
+      chunksError.value = err instanceof Error ? err.message : String(err);
+    })
+    .finally(() => { togglingChunk.value = null; });
+}
+
 export function ChunkViewer() {
   if (!selectedDatei.value) return null;
 
   const data = chunksData.value;
   const tables = data?.chunks.filter((c) => c.is_table).length ?? 0;
   const totalTokens = data?.chunks.reduce((s, c) => s + c.token_count, 0) ?? 0;
+  const disabledCount = data?.chunks.filter((c) => c.disabled).length ?? 0;
 
   return (
     <div
@@ -66,6 +83,11 @@ export function ChunkViewer() {
             <span><strong class="text-text-secondary">{data.chunk_count}</strong> Chunks</span>
             <span><strong class="text-text-secondary">{totalTokens.toLocaleString("de-DE")}</strong> Tokens (approx.)</span>
             {tables > 0 && <span><strong class="text-text-secondary">{tables}</strong> Tabellen</span>}
+            {disabledCount > 0 && (
+              <span style={{ color: "#f0603a" }}>
+                <strong>{disabledCount}</strong> deaktiviert
+              </span>
+            )}
           </div>
         )}
 
@@ -86,7 +108,13 @@ export function ChunkViewer() {
 
           {data && data.chunks.map((chunk) => (
             <div key={chunk.chunk_index}
-              class="mb-4 rounded-lg border border-border-light overflow-hidden">
+              class="mb-4 rounded-lg border overflow-hidden transition-opacity"
+              style={{
+                borderColor: chunk.disabled
+                  ? "rgba(240,96,58,0.25)"
+                  : "var(--color-border-light, rgba(0,0,0,0.08))",
+                opacity: chunk.disabled ? 0.45 : 1,
+              }}>
 
               {/* Chunk header */}
               <div class="flex items-center gap-3 px-4 py-[8px] bg-panel-2 text-[11px]">
@@ -99,6 +127,12 @@ export function ChunkViewer() {
                   </span>
                 )}
                 <span class="ml-auto flex items-center gap-3 shrink-0">
+                  {chunk.disabled && (
+                    <span class="py-[1px] px-[6px] rounded text-[10px] font-semibold"
+                      style={{ background: "rgba(240,96,58,0.10)", color: "#f0603a" }}>
+                      Deaktiviert
+                    </span>
+                  )}
                   {chunk.page != null && (
                     <span class="text-text-muted">S. {chunk.page}</span>
                   )}
@@ -111,6 +145,34 @@ export function ChunkViewer() {
                       Tabelle
                     </span>
                   )}
+                  {/* Toggle button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggle(selectedDatei.value!, chunk.chunk_index, chunk.disabled);
+                    }}
+                    disabled={togglingChunk.value === chunk.chunk_index}
+                    class="py-[2px] px-[8px] rounded text-[10px] font-medium cursor-pointer border transition-colors"
+                    title={chunk.disabled
+                      ? "Im Chatbot wieder beruecksichtigen"
+                      : "Aus Chatbot-Suche ausschliessen"}
+                    style={{
+                      background: chunk.disabled
+                        ? "rgba(47,158,68,0.08)"
+                        : "rgba(240,96,58,0.06)",
+                      borderColor: chunk.disabled
+                        ? "rgba(47,158,68,0.25)"
+                        : "rgba(240,96,58,0.2)",
+                      color: chunk.disabled ? "#2f9e44" : "#c0392b",
+                      opacity: togglingChunk.value === chunk.chunk_index ? 0.5 : 1,
+                    }}
+                  >
+                    {togglingChunk.value === chunk.chunk_index
+                      ? "..."
+                      : chunk.disabled
+                        ? "Aktivieren"
+                        : "Deaktivieren"}
+                  </button>
                 </span>
               </div>
 

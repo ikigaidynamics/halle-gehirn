@@ -137,6 +137,23 @@ export async function deleteDokument(
   return resp.json();
 }
 
+export async function toggleChunkDisabled(
+  datei: string,
+  chunkIndex: number,
+  disabled: boolean,
+): Promise<{ status: string; chunk_id: string; disabled: boolean }> {
+  const resp = await fetch(
+    `/admin/wissen/dokumente/${datei}/chunks/${chunkIndex}`,
+    {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ disabled }),
+    },
+  );
+  if (!resp.ok) throw new Error(await parseError(resp, "Chunk-Status"));
+  return resp.json();
+}
+
 // ── Ingest ──
 
 export async function startIngest(

@@ -18,6 +18,8 @@ from starlette.responses import StreamingResponse
 from halle_gehirn.api.admin_schemas import (
     BestandResponse,
     ChunkDetailResponse,
+    ChunkStatusRequest,
+    ChunkStatusResponse,
     DokumentChunksResponse,
     DokumentCreateResponse,
     DokumentDeleteResponse,
@@ -49,10 +51,13 @@ from halle_gehirn.manifest.editor import (
     validate_entry,
 )
 from halle_gehirn.pipeline.ingest import ManifestEntry, compute_source_hash
+from halle_gehirn.manifest.chunk_overrides import set_chunk_disabled
 from halle_gehirn.vector_store.qdrant_client import (
     delete_by_source_hash,
+    deterministic_chunk_id,
     get_chunks_by_datei,
     list_indexed_documents,
+    update_point_payload,
 )
 
 logger = structlog.get_logger(__name__)
@@ -332,6 +337,8 @@ async def get_dokument_chunks(
             page=p.get("page"),
             is_table=p.get("table_ref") is not None,
             token_count=len(text.split()),
+            source_hash=p.get("source_hash", ""),
+            disabled=bool(p.get("disabled")),
         ))
 
     return DokumentChunksResponse(
@@ -340,6 +347,78 @@ async def get_dokument_chunks(
         chunk_count=len(details),
         chunks=details,
     )
+
+
+# ── PATCH /dokumente/{datei}/chunks/{chunk_index} ──
+
+
+@router.patch(
+    "/dokumente/{datei:path}/chunks/{chunk_index}",
+    response_model=ChunkStatusResponse,
+)
+async def toggle_chunk_disabled(
+    datei: str,
+    chunk_index: int,
+    body: ChunkStatusRequest,
+    _key: Annotated[str, Depends(verify_api_key)],
+) -> ChunkStatusResponse:
+    """Aktiviert/deaktiviert einen Chunk (persistenter Override).
+
+    Reihenfolge (Atomaritaet): Qdrant ZUERST, dann YAML.
+    Bei Qdrant-Fehler bleibt die YAML unangetastet.
+    """
+    # 1. Chunk in Qdrant finden und source_hash + point_id ableiten
+    raw_chunks = get_chunks_by_datei(datei)
+    if not raw_chunks:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Keine Chunks fuer '{datei}' in Qdrant gefunden.",
+        )
+    target = None
+    for item in raw_chunks:
+        p = item.get("payload", {})
+        if p.get("chunk_index") == chunk_index:
+            target = p
+            break
+    if target is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chunk {chunk_index} in '{datei}' nicht gefunden.",
+        )
+
+    source_hash = target.get("source_hash", "")
+    if not source_hash:
+        raise HTTPException(
+            status_code=500,
+            detail="source_hash fehlt im Chunk-Payload.",
+        )
+    chunk_id = deterministic_chunk_id(source_hash, chunk_index)
+
+    # 2. Qdrant set_payload ZUERST (kann fehlschlagen → Abbruch)
+    try:
+        update_point_payload(chunk_id, {"disabled": body.disabled})
+    except Exception as exc:
+        logger.error(
+            "chunk_toggle_qdrant_failed",
+            chunk_id=chunk_id[:12],
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Qdrant set_payload fehlgeschlagen: {exc}",
+        ) from exc
+
+    # 3. NUR bei Erfolg: Override-YAML schreiben
+    set_chunk_disabled(chunk_id, datei, chunk_index, body.disabled)
+
+    logger.info(
+        "chunk_toggled",
+        chunk_id=chunk_id[:12],
+        datei=datei,
+        chunk_index=chunk_index,
+        disabled=body.disabled,
+    )
+    return ChunkStatusResponse(chunk_id=chunk_id, disabled=body.disabled)
 
 
 # ── POST /ingest ──

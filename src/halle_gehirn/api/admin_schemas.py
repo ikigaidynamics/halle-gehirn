@@ -135,6 +135,22 @@ class ChunkDetailResponse(BaseModel):
     page: int | None = None
     is_table: bool = False
     token_count: int = 0
+    source_hash: str = ""
+    disabled: bool = False
+
+
+class ChunkStatusRequest(BaseModel):
+    """Toggle disabled-Flag fuer einen einzelnen Chunk."""
+
+    disabled: bool
+
+
+class ChunkStatusResponse(BaseModel):
+    """Bestaetigung eines Chunk-Status-Toggles."""
+
+    status: str = "ok"
+    chunk_id: str
+    disabled: bool
 
 
 class DokumentChunksResponse(BaseModel):

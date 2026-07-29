@@ -140,6 +140,18 @@ def upsert_chunks(
     ensure_collection(c)
 
     points = _build_points(payloads, dense_vecs, sparse_vecs)
+
+    # Override-Projektion: disabled-Flag aus chunk_overrides.yaml anwenden
+    from halle_gehirn.manifest.chunk_overrides import load_disabled_ids
+    disabled_ids = load_disabled_ids()
+    disabled_count = 0
+    for point in points:
+        if point.id in disabled_ids:
+            point.payload["disabled"] = True
+            disabled_count += 1
+    if disabled_count:
+        logger.info("overrides_applied", disabled_count=disabled_count)
+
     total = 0
     for batch_start in range(0, len(points), _UPSERT_BATCH):
         batch = points[batch_start : batch_start + _UPSERT_BATCH]
@@ -251,7 +263,13 @@ def hybrid_query(
     )
     sparse_vec = SparseVector(indices=sparse_indices, values=sparse_values)
 
-    qdrant_filter = _build_filter(filters) if filters else None
+    qdrant_filter = _build_filter(filters) if filters else Filter()
+    # Disabled-Chunks IMMER ausschliessen (anhaengen, nicht ueberschreiben)
+    disabled_exclude = FieldCondition(
+        key="disabled", match=MatchValue(value=True),
+    )
+    qdrant_filter.must_not = (qdrant_filter.must_not or []) + [disabled_exclude]
+
     fusion = Fusion.RRF if s.fusion == "rrf" else Fusion.DBSF
 
     response = c.query_points(

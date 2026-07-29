@@ -456,3 +456,186 @@ class TestIngestStatus:
             assert data["status"] == "completed"
             assert data["progress"] == 1.0
             assert data["stats"]["chunks_total"] == 10
+
+
+# ── Chunk-Toggle ──
+
+_TOGGLE_CHUNKS: list[dict[str, Any]] = [
+    {
+        "point_id": "aaa",
+        "payload": {
+            "datei": "abschlussarbeiten/test.pdf",
+            "titel": "Testtitel",
+            "chunk_index": 0,
+            "text": "Erster Chunk.",
+            "source_hash": "deadbeef1234",
+        },
+    },
+    {
+        "point_id": "bbb",
+        "payload": {
+            "datei": "abschlussarbeiten/test.pdf",
+            "titel": "Testtitel",
+            "chunk_index": 1,
+            "text": "Zweiter Chunk.",
+            "source_hash": "deadbeef1234",
+        },
+    },
+]
+
+
+class TestChunkToggle:
+    """Tests fuer PATCH /admin/wissen/dokumente/{datei}/chunks/{chunk_index}."""
+
+    @patch("halle_gehirn.api.routes.admin_wissen.set_chunk_disabled")
+    @patch("halle_gehirn.api.routes.admin_wissen.update_point_payload")
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.deterministic_chunk_id",
+        return_value="abc123pointid",
+    )
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.get_chunks_by_datei",
+        return_value=_TOGGLE_CHUNKS,
+    )
+    def test_toggle_disable_sets_both_sides(
+        self,
+        _mock_chunks: MagicMock,
+        _mock_det: MagicMock,
+        mock_update: MagicMock,
+        mock_yaml: MagicMock,
+    ) -> None:
+        """Toggle disable → Qdrant set_payload + YAML override geschrieben."""
+        with _patched_app() as client:
+            resp = client.patch(
+                "/admin/wissen/dokumente/abschlussarbeiten/test.pdf/chunks/0",
+                headers=_HEADERS,
+                json={"disabled": True},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "ok"
+            assert data["chunk_id"] == "abc123pointid"
+            assert data["disabled"] is True
+
+            # Qdrant wurde zuerst aufgerufen
+            mock_update.assert_called_once_with(
+                "abc123pointid", {"disabled": True},
+            )
+            # YAML wurde danach geschrieben
+            mock_yaml.assert_called_once_with(
+                "abc123pointid",
+                "abschlussarbeiten/test.pdf",
+                0,
+                True,
+            )
+
+    @patch("halle_gehirn.api.routes.admin_wissen.set_chunk_disabled")
+    @patch("halle_gehirn.api.routes.admin_wissen.update_point_payload")
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.deterministic_chunk_id",
+        return_value="abc123pointid",
+    )
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.get_chunks_by_datei",
+        return_value=_TOGGLE_CHUNKS,
+    )
+    def test_toggle_reactivate(
+        self,
+        _mock_chunks: MagicMock,
+        _mock_det: MagicMock,
+        mock_update: MagicMock,
+        mock_yaml: MagicMock,
+    ) -> None:
+        """Toggle reactivate → disabled=False in Qdrant + YAML."""
+        with _patched_app() as client:
+            resp = client.patch(
+                "/admin/wissen/dokumente/abschlussarbeiten/test.pdf/chunks/1",
+                headers=_HEADERS,
+                json={"disabled": False},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["disabled"] is False
+
+            mock_update.assert_called_once_with(
+                "abc123pointid", {"disabled": False},
+            )
+            mock_yaml.assert_called_once_with(
+                "abc123pointid",
+                "abschlussarbeiten/test.pdf",
+                1,
+                False,
+            )
+
+    @patch("halle_gehirn.api.routes.admin_wissen.set_chunk_disabled")
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.update_point_payload",
+        side_effect=ConnectionError("Qdrant nicht erreichbar"),
+    )
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.deterministic_chunk_id",
+        return_value="abc123pointid",
+    )
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.get_chunks_by_datei",
+        return_value=_TOGGLE_CHUNKS,
+    )
+    def test_qdrant_error_leaves_yaml_untouched(
+        self,
+        _mock_chunks: MagicMock,
+        _mock_det: MagicMock,
+        _mock_update: MagicMock,
+        mock_yaml: MagicMock,
+    ) -> None:
+        """Qdrant-Fehler → HTTP 502, YAML wird NICHT geschrieben."""
+        with _patched_app() as client:
+            resp = client.patch(
+                "/admin/wissen/dokumente/abschlussarbeiten/test.pdf/chunks/0",
+                headers=_HEADERS,
+                json={"disabled": True},
+            )
+            assert resp.status_code == 502
+            assert "Qdrant" in resp.json()["detail"]
+            # YAML darf NICHT geschrieben worden sein
+            mock_yaml.assert_not_called()
+
+    def test_toggle_without_key_returns_401(self) -> None:
+        """Auth erforderlich — kein API-Key → 401."""
+        with _patched_app() as client:
+            resp = client.patch(
+                "/admin/wissen/dokumente/test.pdf/chunks/0",
+                json={"disabled": True},
+            )
+            assert resp.status_code == 401
+
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.get_chunks_by_datei",
+        return_value=[],
+    )
+    def test_toggle_chunk_not_found_returns_404(
+        self, _mock: MagicMock,
+    ) -> None:
+        """Datei ohne Chunks → 404."""
+        with _patched_app() as client:
+            resp = client.patch(
+                "/admin/wissen/dokumente/nonexistent/file.pdf/chunks/0",
+                headers=_HEADERS,
+                json={"disabled": True},
+            )
+            assert resp.status_code == 404
+
+    @patch(
+        "halle_gehirn.api.routes.admin_wissen.get_chunks_by_datei",
+        return_value=_TOGGLE_CHUNKS,
+    )
+    def test_toggle_wrong_chunk_index_returns_404(
+        self, _mock: MagicMock,
+    ) -> None:
+        """Chunk-Index existiert nicht → 404."""
+        with _patched_app() as client:
+            resp = client.patch(
+                "/admin/wissen/dokumente/abschlussarbeiten/test.pdf/chunks/99",
+                headers=_HEADERS,
+                json={"disabled": True},
+            )
+            assert resp.status_code == 404

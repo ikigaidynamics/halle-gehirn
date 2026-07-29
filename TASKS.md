@@ -190,6 +190,25 @@ in `manual_loader._extract_single` (Extractor-Protocol ohne do_ocr).
 - [ ] `docker-compose.yml`, `Caddyfile`, `ecosystem.config.js`
 - [ ] `observability/tracing.py` (OTEL), Prometheus/Grafana, Backup
 
+## Backlog (nach Eval-Baseline)
+
+- [ ] **Frontend-/Backend-Caching fuer Admin-UI:** Bestand + Chunk-Viewer-Daten
+      im Frontend-State halten statt bei jedem Tab-Wechsel neu zu fetchen.
+      Cache-Invalidierung nach Ingest/Delete/Chunk-Toggle PFLICHT
+      (Diagnose-Werkzeug muss echten Indexzustand zeigen). Risikoarm, evtl.
+      vorziehbar.
+- [ ] **Semantisches Antwort-Caching fuer den Chatbot** (Refs: ACM 3768628,
+      arxiv 2404.12457, Redis semantic cache). VORSICHT: hohe
+      Aehnlichkeitsschwelle noetig, sonst bekommt eine Frage die Antwort
+      einer nur aehnlichen Frage → ungegroundete Falschantwort, untergraebt
+      die Anti-Halluzinations-Kette. Cache muss Quellen+Grounding mitfuehren;
+      Wirkung erst mit Eval-Harness messbar. NUR nach Phase 8.
+- [ ] **Abbildungen im ChunkViewer:** ZUERST Bestandsaufnahme — werden bei den
+      aktuell ingesteten Dokumenten (jetzt via Docling Serve) Figures
+      extrahiert, wo liegen sie (`data/figures/`), sind sie Chunks zugeordnet?
+      DANN erst Anzeige im ChunkViewer. Kein Retrieval-Gewinn (Text-basiert),
+      reines Anzeige-/Diagnose-Feature.
+
 ## Nach dem Spine — Geschwister-Module (siehe PLANNING.md)
 - [ ] `norm_store/` — deterministischer Norm-Store
 - [ ] `live_data/` — OPC-UA-Snapshot-Reader (anlage-Slugs = API-Geräte-IDs)
