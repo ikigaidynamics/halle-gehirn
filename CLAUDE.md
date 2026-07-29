@@ -115,7 +115,10 @@ halle-gehirn/
 │   ├── eval/{golden_qa,metrics,runner}.py
 │   ├── governance/{audit,consent,erasure}.py
 │   ├── observability/{logging_config,tracing}.py
-│   └── ui/streamlit_app.py
+│   └── ui/streamlit_app.py · ingest_app.py (DEPRECATED)
+├── frontend/
+│   ├── jarvis-widget/           # Chat-Frontend (Port 3000)
+│   └── jarvis-wissensbestand/   # Wissensbestand-Admin (Port 3001, ersetzt Streamlit)
 ├── src/scripts/{initial_crawl,reindex,eval_queries,snapshot}.py
 └── tests/
 ```
@@ -156,13 +159,19 @@ Alle Parameter in `.env` (Vorlage: `.env.example`), typisiert in `config.py`. Ke
 | Port | Dienst | Startbefehl / Konfigurationsort |
 |---|---|---|
 | **3000** | Chat-Frontend (Preact/Vite) | `frontend/jarvis-widget/vite.config.ts` → `server.port: 3000, strictPort: true` |
-| **3001** | Wissensbestand (Streamlit) | `.streamlit/config.toml` → `port = 3001` |
+| **3001** | Wissensbestand (Preact/Vite) | `frontend/jarvis-wissensbestand/vite.config.ts` → `server.port: 3001, strictPort: true` |
 | **8001** | API (FastAPI/uvicorn) | `scripts/start_all.ps1` → `$API_PORT = 8001` |
+| 5001 | Docling Serve | Extern gestartet (ats0, Remote-Extraktion) |
 | 6335 | Qdrant | Extern gestartet |
-| 11434 | Ollama | Extern gestartet (ggf. Remote-GPU) |
+| 11434 | Ollama | Extern gestartet (ggf. Remote-GPU, ats0) |
 
-Alle drei Dienste starten mit `scripts/start_all.ps1`. Vite hat `strictPort: true` —
-weicht **nicht** stillschweigend auf einen anderen Port aus, sondern bricht mit Fehler ab.
+Alle drei eigenen Dienste starten mit `scripts/start_all.ps1` (raeumt alte Port-Belegungen
+automatisch auf). Beide Vite-Server haben `strictPort: true` — weichen **nicht**
+stillschweigend auf einen anderen Port aus, sondern brechen mit Fehler ab.
+
+> **Hinweis:** Das Streamlit-Ingest-Tool (`ui/ingest_app.py`) ist **deprecated** und durch
+> das Wissensbestand-Frontend (Preact/Vite, Port 3001) ersetzt. Die Geschaeftslogik in
+> `manifest/editor.py` wird weiterhin vom neuen Frontend ueber die `/admin/wissen`-API genutzt.
 
 ---
 

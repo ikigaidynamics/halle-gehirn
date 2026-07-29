@@ -67,10 +67,7 @@ export function IndexierenTab() {
     : null;
   const isDone = lastEvent?.status === "completed";
   const isFailed = lastEvent?.status === "failed";
-  const progress = lastEvent
-    ? (lastEvent.doc_total > 0 ? lastEvent.doc_index / lastEvent.doc_total : 0)
-    : 0;
-  const progressPct = isDone ? 100 : Math.round(progress * 100);
+  const progressPct = isDone ? 100 : computeProgress(lastEvent);
 
   return (
     <div class="flex gap-6 p-6 h-full overflow-hidden">
@@ -455,6 +452,53 @@ function StatRow({
 }
 
 // ── Helpers ──
+
+/**
+ * Computes overall progress percentage from the last SSE event.
+ *
+ * The pipeline has two axes: per-document phases (extract, chunk) and
+ * global phases (enrich, embed, upsert). For per-doc phases, progress
+ * is (doc_index - 1 + phase_fraction) / doc_total mapped into the
+ * per-doc portion (0-50%). Global phases (enrich, embed, upsert) map
+ * to the remaining 50-95%.
+ */
+function computeProgress(event: IngestEvent | null): number {
+  if (!event) return 0;
+
+  // Phase weights: per-doc phases take 0-50%, global phases 50-95%
+  const PHASE_PROGRESS: Record<string, number> = {
+    reset: 0,
+    extract: 5,     // just started extracting
+    chunk: 15,      // extracting done, chunking
+    enrich: 50,     // all docs prepared, enriching
+    embed: 65,      // embedding
+    upsert: 85,     // upserting to Qdrant
+    done: 100,
+    error: 0,
+  };
+
+  const phase = event.phase;
+  const baseProgress = PHASE_PROGRESS[phase] ?? 0;
+
+  // For per-doc phases (extract, chunk): interpolate within the doc range
+  if ((phase === "extract" || phase === "chunk") && event.doc_total > 0) {
+    const phaseStart = PHASE_PROGRESS["extract"]; // 5
+    const phaseEnd = PHASE_PROGRESS["enrich"];     // 50
+    const phaseRange = phaseEnd - phaseStart;      // 45
+
+    // doc_index is 1-based from the backend. During extract, the doc is
+    // in progress (not complete), so use (doc_index - 1) as completed docs.
+    // During chunk, the extraction for this doc is done.
+    const completedDocs = phase === "extract"
+      ? event.doc_index - 1
+      : event.doc_index;
+    const docFraction = Math.min(completedDocs / event.doc_total, 1);
+
+    return Math.round(phaseStart + docFraction * phaseRange);
+  }
+
+  return Math.round(baseProgress);
+}
 
 function phaseColor(phase: string, alpha: number): string {
   const colors: Record<string, string> = {

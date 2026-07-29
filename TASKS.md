@@ -66,6 +66,11 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
 - [ ] `data/eval/golden_qa.yaml` + `eval/{golden_qa,metrics,runner}.py`
 - [ ] `src/scripts/eval_queries.py` → Baseline-Report
 - [ ] Regression-Gate (CI)
+- [ ] Schwier-Arbeit (`Masterarbeit_PhilippSchwier_5009038.pdf`) als digitales Original
+      mit Textebene beschaffen (Aaron). PDF ist Text-als-Kurven (0 extrahierbarer Text,
+      Docling Serve macht OCR → Zahlensalat bei Vergleichstabellen S. 27-28, 87-88).
+      Reranker filtert Salat-Chunks zuverlaessig (Score 0.0), daher harmlos.
+      Optional: Statistik-Zahlensalat-Chunks per Heuristik filtern.
 - [x] `eval/chunk_quality.py` (ChunkQualityReport: Token-Verteilung, Fragmente,
       Heading-/Zeichen-Abdeckung, Tabellen-Integritaet) + `tests/test_chunk_quality.py`
       (Invarianten + Qualitaetsbaender) + `scripts/eval_chunk_quality.py` (Report)

@@ -1,17 +1,39 @@
-"""Streamlit-Tool: Manifest-Editor + Bestandsuebersicht.
+"""DEPRECATED — Ersetzt durch das Wissensbestand-Frontend (Preact/Vite, Port 3001).
 
-Separates Tool zur Pflege des Wissensbestands. NICHT die Chat-Demo
-(``streamlit_app.py``). Enthaelt Manifest-Editor mit Auto-Erkennung
-von Metadaten beim Upload, Bestandsuebersicht und Indexierung.
+Das neue Frontend bietet dieselbe Funktionalitaet (Bestand, Upload, Detect,
+Indexierung mit SSE-Fortschritt) ueber die /admin/wissen API-Endpoints.
 
-Starten: ``streamlit run src/halle_gehirn/ui/ingest_app.py``
+Starten: ``cd frontend/jarvis-wissensbestand && npx vite``
+Oder:    ``scripts/start_all.ps1`` (startet alle drei Dienste).
+
+Dieses Streamlit-Tool bleibt als Fallback erhalten, wird aber nicht mehr
+weiterentwickelt. Die Geschaeftslogik in ``manifest/editor.py`` wird
+weiterhin vom neuen Frontend ueber die API genutzt.
+
+Altes Startkommando: ``streamlit run src/halle_gehirn/ui/ingest_app.py``
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
+
+warnings.warn(
+    "ingest_app.py ist DEPRECATED — nutze das Wissensbestand-Frontend auf "
+    "Port 3001 (scripts/start_all.ps1). Dieses Streamlit-Tool wird nicht "
+    "mehr weiterentwickelt.",
+    DeprecationWarning,
+    stacklevel=1,
+)
+
+st.warning(
+    "**DEPRECATED** — Dieses Streamlit-Tool ist ersetzt durch das "
+    "[Wissensbestand-Frontend](http://localhost:3001) (Preact/Vite). "
+    "Starte es mit `scripts/start_all.ps1`.",
+    icon="\u26A0\uFE0F",
+)
 
 from halle_gehirn.extraction.metadata_detector import (
     MetadataSuggestion,
