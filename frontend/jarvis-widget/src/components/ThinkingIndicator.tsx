@@ -5,7 +5,7 @@ export function ThinkingIndicator() {
     <div class="flex gap-3">
       <img
         src="/MDZ_Icon.jpg"
-        alt="Jarvis"
+        alt="KI Fabrik Scout"
         class="w-[30px] h-[30px] rounded-[9px] shrink-0 object-cover"
         style={{ boxShadow: "0 0 0 1px rgba(226,0,26,0.25)" }}
       />

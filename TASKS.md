@@ -49,7 +49,7 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
 - [x] End-to-End-Verifikation: Live-Query mit Reranking + Confidence-Gate
 
 ## Phase 5 — Generierung  ✅
-- [x] `generator/{ollama_client,prompts,smalltalk,memory}.py` (Persona: Jarvis, SSE-Streaming, Think-Tag-Filterung)
+- [x] `generator/{ollama_client,prompts,smalltalk,memory}.py` (Persona: KI Fabrik Scout, SSE-Streaming, Think-Tag-Filterung)
 - [x] `pipeline/stages/{validation,grounding,guardrails}.py` (URL-Whitelist, Faithfulness, Prompt-Injection-Abwehr, PII-Redaktion)
 - [x] Tests: Refusal, Citation-Pflicht, Prompt-Injection, Smalltalk (test_generation.py, alle gruen)
 - [x] End-to-End-Verifikation: Live-Generierung mit Streaming + Grounding-Check
@@ -184,7 +184,7 @@ in `manual_loader._extract_single` (Extractor-Protocol ohne do_ocr).
 
 ## Phase 7 — Frontend (Demonstrator-Widget)
 - [ ] `frontend/widget/` (Preact+Tailwind, <100 KB, Streaming, Quellen, Konfidenz)
-- [ ] Branding: **Jarvis**, `PRIMARY_COLOR` (BTU-Hausfarbe)
+- [ ] Branding: **KI Fabrik Scout**, `PRIMARY_COLOR` (BTU-Hausfarbe)
 
 ## Phase 10 — Deployment & Observability
 - [ ] `docker-compose.yml`, `Caddyfile`, `ecosystem.config.js`
@@ -192,22 +192,31 @@ in `manual_loader._extract_single` (Extractor-Protocol ohne do_ocr).
 
 ## Backlog (nach Eval-Baseline)
 
-- [ ] **Frontend-/Backend-Caching fuer Admin-UI:** Bestand + Chunk-Viewer-Daten
-      im Frontend-State halten statt bei jedem Tab-Wechsel neu zu fetchen.
-      Cache-Invalidierung nach Ingest/Delete/Chunk-Toggle PFLICHT
-      (Diagnose-Werkzeug muss echten Indexzustand zeigen). Risikoarm, evtl.
-      vorziehbar.
+- [x] **Frontend-Caching fuer Admin-UI:** ChunkViewer Map-Cache pro Dokument
+      (Signal-basiert, kein localStorage). Bestand-Tab-Wechsel-Cache
+      funktionierte schon (module-level Signal). Invalidierung: Toggle →
+      sofort invalidieren (Race-Condition-sicher), Delete → Eintrag entfernen,
+      Ingest/Cancel → alles leeren. Refresh-Button im ChunkViewer-Header.
+- [ ] **ChunkViewer Erst-Load-Latenz bei grossen Dokumenten:** Ruhs: 347 Chunks,
+      733 KB, ~11s. Alle Chunk-Volltexte + Metadaten in einem Request. Evtl.
+      Lazy-Loading (erst Metadaten/Breadcrumbs, Volltext pro aufgeklapptem Chunk).
 - [ ] **Semantisches Antwort-Caching fuer den Chatbot** (Refs: ACM 3768628,
       arxiv 2404.12457, Redis semantic cache). VORSICHT: hohe
       Aehnlichkeitsschwelle noetig, sonst bekommt eine Frage die Antwort
       einer nur aehnlichen Frage → ungegroundete Falschantwort, untergraebt
       die Anti-Halluzinations-Kette. Cache muss Quellen+Grounding mitfuehren;
       Wirkung erst mit Eval-Harness messbar. NUR nach Phase 8.
-- [ ] **Abbildungen im ChunkViewer:** ZUERST Bestandsaufnahme — werden bei den
-      aktuell ingesteten Dokumenten (jetzt via Docling Serve) Figures
-      extrahiert, wo liegen sie (`data/figures/`), sind sie Chunks zugeordnet?
-      DANN erst Anzeige im ChunkViewer. Kein Retrieval-Gewinn (Text-basiert),
-      reines Anzeige-/Diagnose-Feature.
+- [x] **Abbildungen im ChunkViewer:** API-Endpoint GET /admin/wissen/figures/
+      {source_hash}/{filename} (Path-Traversal-Prevention: Hex+fig_NNN.png
+      Regex, is_relative_to). ChunkDetailResponse + /chunks um figure_refs/
+      figure_captions erweitert. Frontend: Thumbnail-Galerie pro Chunk,
+      Tailwind-Lightbox (ESC/Klick). 101 PNGs aus 3 Dokumenten verfuegbar.
+- [ ] **start_all.ps1 Neustart-Verhalten:** Zombie-TCP-Sockets auf 8001 nach
+      Neustart; `--reload`-Watcher greift neue Module nicht auf (Windows).
+      Optionen: (a) Restart-Parameter mit `Stop-Job` + `Wait` + TIME_WAIT-
+      Freigabe, dann frischer Start; (b) `--reload` entfernen und stattdessen
+      bewusst explizit neu starten — vorhersehbarer als ein Watcher, dem man
+      auf Windows nicht trauen kann. Komfort-/Stabilitaetsthema, kein Blocker.
 
 ## Nach dem Spine — Geschwister-Module (siehe PLANNING.md)
 - [ ] `norm_store/` — deterministischer Norm-Store

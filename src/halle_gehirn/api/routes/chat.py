@@ -13,7 +13,7 @@ import structlog
 from fastapi import APIRouter, Request
 from starlette.responses import StreamingResponse
 
-from halle_gehirn.api.schemas import ChatRequest, ChatResponse, Source
+from halle_gehirn.api.schemas import ChatRequest, ChatResponse, LatencyStats, Source
 
 logger = structlog.get_logger(__name__)
 
@@ -39,11 +39,22 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         debug=body.debug,
     )
     sources = [Source(**s) for s in result.sources]
+    stats = None
+    if result.stats:
+        stats = LatencyStats(
+            rewrite_ms=result.stats.rewrite_ms,
+            embed_ms=result.stats.embed_ms,
+            search_ms=result.stats.search_ms,
+            rerank_ms=result.stats.rerank_ms,
+            generate_ms=result.stats.generate_ms,
+            total_ms=result.stats.total_ms,
+        )
     return ChatResponse(
         answer=result.answer,
         confidence=result.confidence,
         sources=sources,
         latency_ms=round(result.latency_ms, 1),
+        stats=stats,
         debug_info=result.debug_info if body.debug else None,
     )
 

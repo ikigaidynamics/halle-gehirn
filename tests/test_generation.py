@@ -75,7 +75,7 @@ class TestSmalltalkOhneLLM:
 
     def test_greeting_response(self) -> None:
         resp = get_response("Hallo!")
-        assert "Jarvis" in resp
+        assert "KI Fabrik Scout" in resp
         assert len(resp) > 10
 
     def test_identity_detected(self) -> None:
@@ -83,7 +83,7 @@ class TestSmalltalkOhneLLM:
 
     def test_identity_response(self) -> None:
         resp = get_response("Wer bist du?")
-        assert "Jarvis" in resp
+        assert "KI Fabrik Scout" in resp
         assert "BTU" in resp or "Automatisierungstechnik" in resp
 
     def test_capability_detected(self) -> None:

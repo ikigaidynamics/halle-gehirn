@@ -155,7 +155,7 @@ export function Inspector() {
             <span class="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-primary text-white font-mono text-[10px] font-semibold">
               {selectedSourceId.value?.replace("S", "")}
             </span>
-            ausgewaehlt
+            ausgewählt
           </span>
         )}
       </div>
@@ -227,7 +227,7 @@ export function Inspector() {
             <div class="mt-4">
               <div class="flex items-center justify-between mb-2">
                 <span class="font-mono text-[9px] font-semibold tracking-[0.14em] uppercase text-text-ghost">
-                  Chunk · vollstaendig
+                  Chunk · vollständig
                 </span>
                 <span class="font-mono text-[9px] font-medium text-text-pale">
                   {source.page != null && `S. ${source.page} · `}
@@ -303,7 +303,7 @@ export function Inspector() {
                   boxShadow: "0 6px 18px -6px rgba(226,0,26,0.6)",
                 }}
               >
-                Quelle oeffnen <ExternalLink size={14} strokeWidth={2} />
+                Quelle öffnen <ExternalLink size={14} strokeWidth={2} />
               </a>
             )}
           </>

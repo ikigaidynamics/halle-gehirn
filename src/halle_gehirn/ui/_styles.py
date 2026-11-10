@@ -483,7 +483,7 @@ def render_topbar(logo_path: str) -> None:
           <div class="jv-topbar-left">
             {img_tag}
             <div>
-              <div class="jv-topbar-title">Jarvis — Wissensbestand</div>
+              <div class="jv-topbar-title">KI Fabrik Scout — Wissensbestand</div>
               <div class="jv-topbar-subtitle">
                 Dokumentenverwaltung &amp; Indexierung ·
                 Mittelstand-Digital Zentrum Spreeland

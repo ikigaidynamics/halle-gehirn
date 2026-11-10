@@ -70,7 +70,7 @@ def main() -> None:
 
     icon_path = _PUBLIC_DIR / "MD_Icon_bg.jpg"
     st.set_page_config(
-        page_title="Jarvis — Wissensbestand",
+        page_title="KI Fabrik Scout — Wissensbestand",
         page_icon=str(icon_path) if icon_path.exists() else None,
         layout="wide",
     )

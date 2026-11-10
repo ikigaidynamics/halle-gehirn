@@ -179,7 +179,7 @@ class TestSmalltalkShortCircuit:
         result = await orch.run("Hallo!")
 
         assert result.smalltalk is True
-        assert "Jarvis" in result.answer
+        assert "KI Fabrik Scout" in result.answer
         p.retriever.retrieve.assert_not_called()
         p.generator.generate_full.assert_not_called()
 

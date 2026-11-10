@@ -43,6 +43,18 @@ logger = structlog.get_logger(__name__)
 
 
 @dataclass
+class LatencyStats:
+    """Latenz-Aufschluesselung pro Pipeline-Stage (in ms)."""
+
+    rewrite_ms: float = 0.0
+    embed_ms: float = 0.0
+    search_ms: float = 0.0
+    rerank_ms: float = 0.0
+    generate_ms: float = 0.0
+    total_ms: float = 0.0
+
+
+@dataclass
 class QueryResult:
     """Ergebnis eines vollstaendigen Pipeline-Durchlaufs."""
 
@@ -50,6 +62,7 @@ class QueryResult:
     confidence: str = ""
     sources: list[dict[str, Any]] = field(default_factory=list)
     latency_ms: float = 0.0
+    stats: LatencyStats | None = None
     smalltalk: bool = False
     guardrail_blocked: bool = False
     guardrail_reason: str = ""
@@ -130,6 +143,8 @@ class QueryOrchestrator:
         timer = PipelineTimer()
         debug_info: dict[str, Any] = {}
 
+        logger.info("pipeline_start", query_len=len(query))
+
         # 1. Smalltalk
         if is_smalltalk(query):
             answer = get_response(query)
@@ -161,10 +176,12 @@ class QueryOrchestrator:
         search_query = query
         if p.settings.use_query_rewrite:
             timer.start("rewrite")
+            logger.info("stage_start", stage="rewrite")
             history = memory.get_messages() if memory else []
             rewrite_result = await p.query_rewriter.rewrite(query, history)
             search_query = rewrite_result.rewritten
             timer.stop("rewrite")
+            logger.info("stage_done", stage="rewrite", ms=round(timer.get("rewrite"), 1))
         if debug and rewrite_result:
             debug_info["query_rewritten"] = rewrite_result.rewritten
             debug_info["was_rewritten"] = rewrite_result.was_rewritten
@@ -180,7 +197,16 @@ class QueryOrchestrator:
             debug_info["transformed_queries"] = queries
 
         # 6. Retrieve (Timer fuer embed/search/rerank intern)
+        logger.info("stage_start", stage="retrieve")
         hits = await self._retrieve_dedup(queries, filters, timer)
+        logger.info(
+            "stage_done",
+            stage="retrieve",
+            embed_ms=round(timer.get("embed"), 1),
+            search_ms=round(timer.get("search"), 1),
+            rerank_ms=round(timer.get("rerank"), 1),
+            hits=len(hits),
+        )
         if debug:
             debug_info["retrieval_hits"] = len(hits)
 
@@ -192,6 +218,7 @@ class QueryOrchestrator:
         # 8. Generate (non-streaming, ORIGINAL query an Generator)
         memory_msgs = memory.get_messages() if memory else None
         timer.start("generate")
+        logger.info("stage_start", stage="generate", confidence=confidence)
         answer = await p.generator.generate_full(
             query=query,
             hits=hits,
@@ -199,6 +226,7 @@ class QueryOrchestrator:
             memory_messages=memory_msgs,
         )
         timer.stop("generate")
+        logger.info("stage_done", stage="generate", ms=round(timer.get("generate"), 1))
 
         # 9./10. Validation + Grounding + PII (gemeinsam mit Stream-Pfad)
         final = await self._finalize_answer(answer, hits, confidence)
@@ -215,11 +243,21 @@ class QueryOrchestrator:
             await memory.summarize_if_needed()
 
         sources = _build_sources(hits)
+        breakdown = timer.breakdown()
+        stats = LatencyStats(
+            rewrite_ms=breakdown.rewrite_ms,
+            embed_ms=breakdown.embed_ms,
+            search_ms=breakdown.search_ms,
+            rerank_ms=breakdown.rerank_ms,
+            generate_ms=breakdown.generate_ms,
+            total_ms=breakdown.total_ms,
+        )
         result = QueryResult(
             answer=final.answer,
             confidence=confidence,
             sources=sources,
             latency_ms=_elapsed_ms(start),
+            stats=stats,
             query_type=query_type,
             validation=final.validation,
             grounding=final.grounding,
@@ -396,11 +434,21 @@ class QueryOrchestrator:
             await memory.summarize_if_needed()
 
         sources = _build_sources(hits)
+        breakdown = timer.breakdown()
+        stats = LatencyStats(
+            rewrite_ms=breakdown.rewrite_ms,
+            embed_ms=breakdown.embed_ms,
+            search_ms=breakdown.search_ms,
+            rerank_ms=breakdown.rerank_ms,
+            generate_ms=breakdown.generate_ms,
+            total_ms=breakdown.total_ms,
+        )
 
         # Done-Event mit Metadaten + finaler (bereinigter) Antwort
         yield _done_event(
             confidence, sources, start, final,
             grounding_threshold=self._pipeline.settings.grounding_threshold,
+            stats=stats,
         )
 
         # 11. Retrieval-Log (JSONL)
@@ -408,6 +456,7 @@ class QueryOrchestrator:
             answer=final.answer,
             confidence=confidence,
             sources=sources,
+            stats=stats,
             validation=final.validation,
             grounding=final.grounding,
             pii_redacted=final.pii_redacted,
@@ -571,6 +620,7 @@ def _done_event(
     start: float,
     final: _FinalizedAnswer | None = None,
     grounding_threshold: float = 0.5,
+    stats: LatencyStats | None = None,
 ) -> dict[str, Any]:
     """Baut das finale Done-SSE-Event.
 
@@ -584,6 +634,15 @@ def _done_event(
         "sources": sources,
         "latency_ms": round(_elapsed_ms(start), 1),
     }
+    if stats is not None:
+        event["stats"] = {
+            "rewrite_ms": stats.rewrite_ms,
+            "embed_ms": stats.embed_ms,
+            "search_ms": stats.search_ms,
+            "rerank_ms": stats.rerank_ms,
+            "generate_ms": stats.generate_ms,
+            "total_ms": stats.total_ms,
+        }
     if final is None:
         return event
     event["final_answer"] = final.answer

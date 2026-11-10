@@ -51,6 +51,17 @@ class Source(BaseModel):
     grad: str = ""
 
 
+class LatencyStats(BaseModel):
+    """Latenz-Aufschluesselung pro Pipeline-Stage (in ms)."""
+
+    rewrite_ms: float = 0.0
+    embed_ms: float = 0.0
+    search_ms: float = 0.0
+    rerank_ms: float = 0.0
+    generate_ms: float = 0.0
+    total_ms: float = 0.0
+
+
 class ChatResponse(BaseModel):
     """Response fuer /chat (nicht-streaming)."""
 
@@ -58,6 +69,7 @@ class ChatResponse(BaseModel):
     confidence: str
     sources: list[Source] = Field(default_factory=list)
     latency_ms: float = 0.0
+    stats: LatencyStats | None = None
     debug_info: dict[str, Any] | None = None
 
 

@@ -349,42 +349,47 @@ def list_indexed_documents(
 
     Returns:
         Liste von Dicts mit datei, titel, chunk_count, source_hash.
+        Bei Verbindungsfehlern wird eine leere Liste zurueckgegeben.
     """
-    c = client or get_qdrant_client()
-    s = get_settings()
+    try:
+        c = client or get_qdrant_client()
+        s = get_settings()
 
-    if not c.collection_exists(s.qdrant_collection):
+        if not c.collection_exists(s.qdrant_collection):
+            return []
+
+        docs: dict[str, dict[str, Any]] = {}
+        offset = None
+
+        while True:
+            results, next_offset = c.scroll(
+                collection_name=s.qdrant_collection,
+                limit=100,
+                offset=offset,
+                with_payload=["datei", "titel", "source_hash", "doc_type"],
+                with_vectors=False,
+            )
+            for point in results:
+                payload = point.payload or {}
+                datei = payload.get("datei", "")
+                if datei not in docs:
+                    docs[datei] = {
+                        "datei": datei,
+                        "titel": payload.get("titel", "Unbekannt"),
+                        "source_hash": payload.get("source_hash", ""),
+                        "doc_type": payload.get("doc_type", ""),
+                        "chunk_count": 0,
+                    }
+                docs[datei]["chunk_count"] += 1
+
+            if next_offset is None:
+                break
+            offset = next_offset
+
+        return sorted(docs.values(), key=lambda d: d["datei"])
+    except Exception as exc:
+        logger.warning("list_indexed_documents_failed", error=str(exc))
         return []
-
-    docs: dict[str, dict[str, Any]] = {}
-    offset = None
-
-    while True:
-        results, next_offset = c.scroll(
-            collection_name=s.qdrant_collection,
-            limit=100,
-            offset=offset,
-            with_payload=["datei", "titel", "source_hash", "doc_type"],
-            with_vectors=False,
-        )
-        for point in results:
-            payload = point.payload or {}
-            datei = payload.get("datei", "")
-            if datei not in docs:
-                docs[datei] = {
-                    "datei": datei,
-                    "titel": payload.get("titel", "Unbekannt"),
-                    "source_hash": payload.get("source_hash", ""),
-                    "doc_type": payload.get("doc_type", ""),
-                    "chunk_count": 0,
-                }
-            docs[datei]["chunk_count"] += 1
-
-        if next_offset is None:
-            break
-        offset = next_offset
-
-    return sorted(docs.values(), key=lambda d: d["datei"])
 
 
 def get_chunks_by_datei(

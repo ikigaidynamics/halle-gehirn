@@ -13,7 +13,9 @@ from typing import TYPE_CHECKING
 from halle_gehirn.config import Settings, get_settings
 
 if TYPE_CHECKING:
+    from halle_gehirn.embeddings.fastembed_embedder import FastEmbedDenseEmbedder
     from halle_gehirn.embeddings.ollama_embedder import OllamaEmbedder
+    from halle_gehirn.embeddings.openai_embedder import OpenAIEmbedder
     from halle_gehirn.embeddings.sparse_embedder import FastEmbedSparseEmbedder
 
 
@@ -44,18 +46,26 @@ def truncate_matryoshka(
 @lru_cache(maxsize=1)
 def get_dense_embedder(
     settings: Settings | None = None,
-) -> OllamaEmbedder:
+) -> "OllamaEmbedder | FastEmbedDenseEmbedder | OpenAIEmbedder":
     """Gibt den konfigurierten Dense-Embedder zurueck (gecacht).
 
     Args:
         settings: Optionale Settings-Instanz.
 
     Returns:
-        OllamaEmbedder-Instanz.
+        OllamaEmbedder, FastEmbedDenseEmbedder oder OpenAIEmbedder je nach Config.
     """
-    from halle_gehirn.embeddings.ollama_embedder import OllamaEmbedder
-
     s = settings or get_settings()
+
+    if s.embedding_backend == "fastembed":
+        from halle_gehirn.embeddings.fastembed_embedder import FastEmbedDenseEmbedder
+        return FastEmbedDenseEmbedder(settings=s)
+
+    if s.embedding_backend == "openai":
+        from halle_gehirn.embeddings.openai_embedder import OpenAIEmbedder
+        return OpenAIEmbedder(settings=s)
+
+    from halle_gehirn.embeddings.ollama_embedder import OllamaEmbedder
     return OllamaEmbedder(settings=s)
 
 

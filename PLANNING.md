@@ -22,7 +22,7 @@ Abfragezeit via Self-Querying.
 ## Roadmap — Spine (dieses Repo)
 
 Phasen 0–10 (siehe TASKS.md), Reihenfolge **0→1→2→3→4→5→6→8→9→7→10**. Ziel: lauffähige,
-evaluierbare, vorzeigbare Wissensbasis — „Jarvis 1.0".
+evaluierbare, vorzeigbare Wissensbasis — „KI Fabrik Scout 1.0".
 
 ## Roadmap zum Gesamtsystem (Geschwister-Module, NACH dem Spine)
 

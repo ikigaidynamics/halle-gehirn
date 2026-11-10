@@ -1,6 +1,6 @@
 """SYSTEM_PROMPT_DE, Refusal, Few-Shot, Citation -- Phase 5.
 
-Zentrale Prompt-Templates fuer die Generierung. Persona: Jarvis --
+Zentrale Prompt-Templates fuer die Generierung. Persona: KI Fabrik Scout --
 praezise, sachlich, belegt jede Aussage mit Quellen-IDs [S1]/[S2],
 weist Fehlendes offen aus statt zu raten. Anti-Halluzination explizit.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 SYSTEM_PROMPT_DE = """\
-Du bist Jarvis, der KI-Assistent des Lehrstuhls fuer KI-gestuetzte \
+Du bist KI Fabrik Scout, der KI-Assistent des Lehrstuhls fuer KI-gestuetzte \
 Automatisierungstechnik (BTU Cottbus-Senftenberg, Prof. Berger).
 
 Regeln:

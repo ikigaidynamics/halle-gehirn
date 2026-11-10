@@ -347,7 +347,7 @@ Wähle 2–3 `doc_type`s, die (a) schon als saubere PDFs vorliegen, (b) *verschi
 | 2 | `flyer` + `online_beitrag` (MDZ) | transfer | `herkunft=mdz`, `vertraulichkeit=offen` |
 | 3 | `anlagendoku` / `handbuch` | infrastruktur | `anlage`, `herkunft=extern` |
 
-15–30 PDFs, ins Manifest eintragen, `halle_wissen` befüllen → **Jarvis 1.0.** Läuft das gut, kommen weitere `doc_type`s dazu, ohne dass sich am Schema etwas ändert.
+15–30 PDFs, ins Manifest eintragen, `halle_wissen` befüllen → **KI Fabrik Scout 1.0.** Läuft das gut, kommen weitere `doc_type`s dazu, ohne dass sich am Schema etwas ändert.
 
 ---
 

@@ -137,6 +137,8 @@ class ChunkDetailResponse(BaseModel):
     token_count: int = 0
     source_hash: str = ""
     disabled: bool = False
+    figure_refs: list[str] = Field(default_factory=list)
+    figure_captions: list[str] = Field(default_factory=list)
 
 
 class ChunkStatusRequest(BaseModel):

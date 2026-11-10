@@ -65,7 +65,7 @@ Tabellen; `breadcrumb` nur Body-Chunks, nur einstufig, bei Tabellen `None`.
 |---|---|---|
 | **A4**: `run_stream` ruft Validation/Grounding/Output-Guardrail auf, **verwirft aber alle Ergebnisse**: kein `cleaned_answer`, kein Grounding-Verdict im done-Event, **keine PII-Redaktion** (Non-Stream-Pfad redigiert, `orchestrator.py:158,167-168`). UI nutzt nur Streaming | 🔴 hoch | `orchestrator.py:273-280` |
 | Schema-Drift: `_build_sources` liefert `datei/doc_type/breadcrumb`, `schemas.Source` kennt sie nicht → `/chat` (Pydantic) verliert die Felder, `/chat/stream` (raw dict) liefert sie — zwei APIs, zwei Verträge | 🟠 mittel | `schemas.py:21-29` vs. `orchestrator.py:364-380` |
-| LLM-Prompt-Kontext enthält nur `titel + text` — ohne `page`/`breadcrumb` kann Jarvis nie „(S. 42, Kap. 3.2)" zitieren | 🟠 mittel | `prompts.py:97-112` |
+| LLM-Prompt-Kontext enthält nur `titel + text` — ohne `page`/`breadcrumb` kann KI Fabrik Scout nie „(S. 42, Kap. 3.2)" zitieren | 🟠 mittel | `prompts.py:97-112` |
 | Facetten-Filter: API + Retriever können `filters`, das Chat-UI sendet nie welche — die Kern-Taxonomie ist im Chat unsichtbar | 🟠 mittel | `streamlit_app.py:172-175` |
 | `primary_color` tote Konfig (UI hardcodiert `#c41230`), `bot_name` hardcodiert, SSE-Parse ohne `JSONDecodeError`-Schutz | 🟡 niedrig | `streamlit_app.py:59-62,76,181`, `config.py:101-102` |
 | Rate-Limiter + Session-Dict wachsen unbegrenzt (kein Eviction), Admin-Key-Vergleich nicht konstantzeit, `/admin/reindex+eval` Platzhalter | 🟡 niedrig | `main.py:64-75`, `orchestrator.py:65`, `admin.py:37,51-71` |

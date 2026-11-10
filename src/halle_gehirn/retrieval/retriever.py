@@ -15,8 +15,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from halle_gehirn.config import Settings, get_settings
-from halle_gehirn.embeddings.ollama_embedder import OllamaEmbedder
-from halle_gehirn.embeddings.reranker import LogprobsReranker
+from halle_gehirn.embeddings.provider import get_dense_embedder
 from halle_gehirn.embeddings.sparse_embedder import FastEmbedSparseEmbedder
 from halle_gehirn.retrieval.router import KeywordRouter
 from halle_gehirn.vector_store.qdrant_client import (
@@ -47,21 +46,17 @@ class HybridRetriever:
     def __init__(
         self,
         settings: Settings | None = None,
-        dense_embedder: OllamaEmbedder | None = None,
+        dense_embedder: Any | None = None,
         sparse_embedder: FastEmbedSparseEmbedder | None = None,
-        reranker: LogprobsReranker | None = None,
+        reranker: Any | None = None,
         router: KeywordRouter | None = None,
     ) -> None:
         self._settings = settings or get_settings()
-        self._dense = dense_embedder or OllamaEmbedder(
-            settings=self._settings,
-        )
+        self._dense = dense_embedder or get_dense_embedder()
         self._sparse = sparse_embedder or FastEmbedSparseEmbedder(
             settings=self._settings,
         )
-        self._reranker = reranker or LogprobsReranker(
-            settings=self._settings,
-        )
+        self._reranker = reranker or _get_reranker(self._settings)
         self._router = router or KeywordRouter(settings=self._settings)
 
     async def retrieve(
@@ -203,3 +198,40 @@ def _text_jaccard(a: Any, b: Any) -> float:
     intersection = len(tokens_a & tokens_b)
     union = len(tokens_a | tokens_b)
     return intersection / union if union > 0 else 0.0
+
+
+class NoOpReranker:
+    """Dummy-Reranker der nur den RRF-Score uebernimmt (kein LLM).
+
+    Schnellste Option: Ueberspringt LLM-Reranking komplett und
+    verwendet die Scores aus der Hybrid-Query direkt.
+    """
+
+    async def rerank(self, query: str, hits: list[Any]) -> list[Any]:
+        """Kopiert score nach rerank_score ohne LLM-Aufruf."""
+        for hit in hits:
+            hit.rerank_score = getattr(hit, "score", 0.0)
+        hits.sort(key=lambda h: h.rerank_score, reverse=True)
+        logger.info("noop_rerank_done", total=len(hits))
+        return hits
+
+
+def _get_reranker(settings: Settings) -> Any:
+    """Waehlt den Reranker basierend auf Konfiguration.
+
+    Optionen:
+    - none: Kein Reranking, nur RRF-Score (schnellste Option)
+    - logprobs: LLM-basiertes Ja/Nein-Scoring (langsam aber genau)
+    - cross_encoder: Dediziertes Reranking-Modell (TODO)
+    - cohere: Cohere API (TODO)
+    """
+    if settings.reranker == "none":
+        logger.info("reranker_disabled", msg="Verwende RRF-Score ohne LLM-Reranking")
+        return NoOpReranker()
+
+    if settings.llm_backend == "openai":
+        from halle_gehirn.embeddings.openai_reranker import OpenAIReranker
+        return OpenAIReranker(settings=settings)
+
+    from halle_gehirn.embeddings.reranker import LogprobsReranker
+    return LogprobsReranker(settings=settings)

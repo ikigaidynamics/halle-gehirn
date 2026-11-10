@@ -20,12 +20,25 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    # ── LLM & Embedding (lokal, Ollama) ──
+    # ── LLM & Embedding ──
+    llm_backend: Literal["ollama", "openai"] = "ollama"
+    # Ollama-Einstellungen
     ollama_url: str = "http://localhost:11434"
     ollama_urls: str = ""  # Komma-separierte Fallback-URLs (UI-waehlbar)
     llm_model: str = "qwen3:14b"
-    embedding_model: str = "qwen3-embedding:0.6b"
+    # OpenAI-kompatibles Backend (vLLM, text-generation-inference, etc.)
+    openai_base_url: str = ""  # z.B. http://141.46.73.22:8080/v1
+    openai_api_key: str = ""  # leer fuer lokale Server ohne Auth
+    openai_model: str = ""  # Modellname fuer OpenAI-API
+    # Embedding-Backend: ollama, fastembed (lokal) oder openai (OpenAI-kompatible API)
+    embedding_backend: Literal["ollama", "fastembed", "openai"] = "ollama"
+    embedding_model: str = "qwen3-embedding:0.6b"  # Modellname fuer Ollama/OpenAI
+    fastembed_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_dim: int = 1024
+    # OpenAI-kompatibles Embedding-Backend (z.B. vLLM, TEI, llama.cpp)
+    embedding_openai_base_url: str = ""  # z.B. http://141.43.76.22:8081/v1
+    embedding_openai_api_key: str = ""  # leer fuer lokale Server ohne Auth
+    embedding_openai_model: str = ""  # Modellname fuer OpenAI-API (leer = embedding_model)
     sparse_model: str = "Qdrant/bm25"
     sparse_language: str = "german"
     use_colbert: bool = False
@@ -36,7 +49,7 @@ class Settings(BaseSettings):
     fusion: Literal["rrf", "dbsf"] = "rrf"
     use_mmr: bool = True
     mmr_lambda: float = 0.7
-    reranker: Literal["logprobs", "cross_encoder", "cohere"] = "logprobs"
+    reranker: Literal["logprobs", "cross_encoder", "cohere", "none"] = "logprobs"
     rerank_num_predict: int = 8  # Ja/Nein braucht nur 1 Token
     rerank_top_logprobs: int = 5
     use_query_rewrite: bool = True
@@ -110,7 +123,7 @@ class Settings(BaseSettings):
     ingest_ui_port: int = 3001  # Wissensbestand-Frontend (Streamlit)
 
     # ── Halle-Gehirn / Branding ──
-    bot_name: str = "Jarvis"
+    bot_name: str = "KI Fabrik Scout"
     primary_color: str = "#c41230"  # MDZ-Rot (per .env ueberschreibbar)
     language: str = "de"
 

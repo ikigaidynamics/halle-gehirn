@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "preact/hooks";
-import { messages, streaming, streamBuffer } from "../state/store";
+import { messages, streaming, streamBuffer, streamStartTime } from "../state/store";
 import { UserBubble } from "./UserBubble";
 import { AssistantMessage } from "./AssistantMessage";
 import { ThinkingIndicator } from "./ThinkingIndicator";
@@ -10,12 +10,12 @@ function WelcomeScreen() {
     <div class="flex flex-col items-center justify-center py-20 text-center">
       <img
         src="/MDZ_Icon.jpg"
-        alt="Jarvis"
+        alt="KI Fabrik Scout"
         class="w-16 h-16 rounded-2xl object-cover mb-5"
         style={{ boxShadow: "0 0 0 2px rgba(226,0,26,0.2)" }}
       />
       <h2 class="text-[20px] font-bold text-text-primary mb-2 tracking-[-0.01em]">
-        Willkommen bei Jarvis
+        Willkommen beim KI Fabrik Scout
       </h2>
       <p class="text-[14px] text-text-faint leading-[1.6] max-w-[420px]">
         Ich bin der Wissensassistent der Modellfabrik. Stelle mir eine Frage
@@ -24,9 +24,9 @@ function WelcomeScreen() {
       </p>
       <div class="flex flex-wrap justify-center gap-2 mt-6">
         {[
-          "Welche Sensoren eignen sich fuer Predictive Maintenance?",
+          "Welche Sensoren eignen sich für Predictive Maintenance?",
           "Was ist der Forschungsschwerpunkt MRK?",
-          "Gibt es Abschlussarbeiten zur Gestenerkennung?",
+          "Welche Anlagen gibt es in der Modellfabrik?",
         ].map((q) => (
           <button
             key={q}
@@ -83,6 +83,8 @@ export function Conversation() {
                 sources={msg.sources}
                 confidence={msg.confidence}
                 groundingScore={msg.groundingScore}
+                latencyMs={msg.latencyMs}
+                stats={msg.stats}
                 msgIdx={i}
               />
             ),
@@ -101,6 +103,7 @@ export function Conversation() {
               confidence=""
               isStreaming
               msgIdx={messages.value.length}
+              streamStartTime={streamStartTime.value}
             />
           )}
         </div>

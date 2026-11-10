@@ -2,7 +2,7 @@
 
 Lokal-first, DSGVO-konformer **RAG-Stack** für die Modellfabrik des Lehrstuhls *KI-gestützte
 Automatisierungstechnik* (BTU Cottbus-Senftenberg). Dieses Repo ist **Stufe 1 / Säule 1** des
-Gesamtsystems Halle-Gehirn: die Wissensbasis. Bot-Anzeigename: **Jarvis**.
+Gesamtsystems Halle-Gehirn: die Wissensbasis. Bot-Anzeigename: **KI Fabrik Scout**.
 
 Dokumente (Berichte, Abschlussarbeiten, Handbücher, Anlagendoku, kuratiertes Erfahrungswissen)
 werden per Hybrid-Suche (dense + sparse) durchsuchbar; Antworten sind quellenbelegt, mit exakten

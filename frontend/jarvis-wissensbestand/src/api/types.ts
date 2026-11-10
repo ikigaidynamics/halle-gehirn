@@ -124,6 +124,8 @@ export interface ChunkDetail {
   token_count: number;
   source_hash: string;
   disabled: boolean;
+  figure_refs: string[];
+  figure_captions: string[];
 }
 
 export interface DokumentChunksResponse {

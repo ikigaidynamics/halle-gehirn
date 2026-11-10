@@ -11,7 +11,7 @@ export function Topbar() {
           class="w-[34px] h-[34px] rounded-[9px] object-cover"
         />
         <span class="text-[16px] font-bold text-text-primary tracking-[-0.01em]">
-          Jarvis
+          KI Fabrik Scout
         </span>
       </div>
 

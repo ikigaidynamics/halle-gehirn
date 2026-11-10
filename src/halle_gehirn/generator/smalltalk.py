@@ -41,14 +41,14 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ), "thanks"),
 ]
 
-# Antworten je Kategorie (Persona Jarvis: sachlich, freundlich)
+# Antworten je Kategorie (Persona KI Fabrik Scout: sachlich, freundlich)
 _RESPONSES: dict[str, str] = {
     "greeting": (
-        "Hallo! Ich bin Jarvis, der KI-Assistent des Lehrstuhls fuer "
+        "Hallo! Ich bin KI Fabrik Scout, der KI-Assistent des Lehrstuhls fuer"
         "KI-gestuetzte Automatisierungstechnik. Wie kann ich Ihnen helfen?"
     ),
     "identity": (
-        "Ich bin Jarvis, der Wissensassistent des Lehrstuhls fuer "
+        "Ich bin KI Fabrik Scout, der Wissensassistent des Lehrstuhls fuer"
         "KI-gestuetzte Automatisierungstechnik an der BTU Cottbus-Senftenberg. "
         "Ich beantworte Fragen auf Basis der dokumentierten Lehrstuhl-Wissensbasis."
     ),

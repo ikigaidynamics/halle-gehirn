@@ -9,93 +9,12 @@
 # ── DOKUMENTBESTAND ──
 
 dokumente:
-  - datei: "abschlussarbeiten/Demonstratoren_Modellfabrik_Cottbus_RAG.md"
-    titel: "Demonstratoren Übersicht"
-    doc_type: anlagendoku
-    bereich: [infrastruktur]
-    jahr: 2026
-    herkunft: lehrstuhl_at
-    quelltyp: kuratiert
-    vertraulichkeit: offen
-    status: final
 
-  - datei: "abschlussarbeiten/Abschlussarbeit_Zhili Wang.pdf"
-    titel: "Systementwurf für intelligentes Datenmanagement und Diagnostik industrieller Anlagen mittels IIoT und KI"
-    doc_type: abschlussarbeit
-    grad: master
-    bereich: [infrastruktur, lehre, forschung]
-    ansprechperson: [lautsch]
-    autor: [wang]
-    jahr: 2025
+  - datei: "anlagen/Demonstratoren_Modellfabrik_Cottbus_RAG (1).md"
+    titel: "Referenzdokument: Demonstratoren der Modellfabrik-Halle"
+    doc_type: anlagendoku
+    bereich: [transfer, forschung, lehre]
     herkunft: lehrstuhl_at
     quelltyp: primaer
     vertraulichkeit: intern
-    status: final
-
-  - datei: "abschlussarbeiten/Masterarbeit_Alexander_Ruhs.pdf"
-    titel: "Weiterentwicklung und Test von Datenhandschuhen für die Gestenerkennung in Montageprozessen mittels KI"
-    doc_type: abschlussarbeit
-    grad: master
-    bereich: [forschung, infrastruktur, transfer]
-    ansprechperson: [berger, lautsch]
-    autor: [ruhs]
-    jahr: 2025
-    herkunft: lehrstuhl_at
-    quelltyp: primaer
-    vertraulichkeit: offen
-    status: final
-
-  - datei: "abschlussarbeiten/Masterarbeit Khaled Abdalla.pdf"
-    titel: "Evaluierung verschiedener Beschleunigungssensoren zur Zustandsklassifikation von Werkzeugen im Kontext industrieller Predictive-Maintenance-Lösungen"
-    doc_type: abschlussarbeit
-    grad: master
-    bereich: [forschung, infrastruktur, transfer]
-    thema: [mensch_maschine_interaktion]
-    anlage: [predictive_maintenance]
-    ansprechperson: [berger, lautsch]
-    autor: [abdalla]
-    jahr: 2025
-    herkunft: lehrstuhl_at
-    quelltyp: primaer
-    vertraulichkeit: offen
-    status: final
-
-  - datei: "abschlussarbeiten/Masterarbeit_PhilippSchwier_5009038.pdf"
-    titel: "Analyse zu predictive maintenance im Spreeland anhand von Markpotenzial, verfügbaren Lösungen und Entwicklung von Transfermaterialien"
-    doc_type: abschlussarbeit
-    grad: master
-    bereich: [lehre, transfer]
-    anlage: [predictive_maintenance]
-    ansprechperson: [lautsch]
-    autor: [schwier]
-    jahr: 2025
-    herkunft: lehrstuhl_at
-    quelltyp: primaer
-    vertraulichkeit: offen
-    status: final
-
-  - datei: "abschlussarbeiten/Masterarbeit_Ronny_Porsch.pdf"
-    titel: "Entwicklung einer plattformübergreifenden Industrial Metaverse-Anwendung für eine produktionsnahe Umgebung"
-    doc_type: abschlussarbeit
-    grad: master
-    bereich: [transfer, infrastruktur]
-    ansprechperson: [berger]
-    autor: [porsch]
-    jahr: 2024
-    herkunft: lehrstuhl_at
-    quelltyp: primaer
-    vertraulichkeit: offen
-    status: final
-
-  - datei: "abschlussarbeiten/Masterarbeit - Shenghan Gao.pdf"
-    titel: "VR-basierte Optimierung von manuellen Montageabläufen in automatisierte Anlage"
-    doc_type: abschlussarbeit
-    grad: master
-    bereich: [forschung, transfer]
-    ansprechperson: [berger]
-    autor: [gao]
-    jahr: 2024
-    herkunft: lehrstuhl_at
-    quelltyp: primaer
-    vertraulichkeit: offen
     status: final

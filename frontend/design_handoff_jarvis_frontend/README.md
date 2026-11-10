@@ -1,7 +1,7 @@
-# Handoff: Jarvis — Halle-Gehirn Wissensbasis (Chat/Search-Frontend, MDZ-Branding)
+# Handoff: KI Fabrik Scout — Halle-Gehirn Wissensbasis (Chat/Search-Frontend, MDZ-Branding)
 
 ## Overview
-Frontend für **Jarvis**, den quellenbelegten RAG-Chat der Wissensbasis der Modellfabrik
+Frontend für **KI Fabrik Scout**, den quellenbelegten RAG-Chat der Wissensbasis der Modellfabrik
 (Repo `halle-gehirn`, Säule 1). Es ist ein **helles** Chat-/Such-Interface im Branding des
 **Mittelstand-Digital Zentrums Spreeland** (Weiß/Rot). Kernidee: jede Antwort ist
 quellenbelegt, die Confidence wird als Ampel gezeigt, und der ausgewählte Beleg wird rechts
@@ -12,7 +12,7 @@ Layout (3 Spalten): **Slim-Icon-Rail** (links) · **Konversation** (Mitte) · **
 darunter eine **Förder-Fußzeile**. Darüber eine **Topbar**.
 
 ## About the Design Files
-Die Datei `Jarvis Wissensbasis.dc.html` in diesem Bundle ist eine **Design-Referenz in HTML** —
+Die Datei `KI Fabrik Scout Wissensbasis.dc.html` in diesem Bundle ist eine **Design-Referenz in HTML** —
 ein Prototyp, der Aussehen und Verhalten zeigt, **kein** direkt zu kopierender Produktionscode.
 Aufgabe ist, dieses Design im **bestehenden Stack von `halle-gehirn` nachzubauen**: laut
 `CLAUDE.md` ein **Preact + Tailwind-Widget (< 100 KB), demonstrator-tauglich**, angebunden an die
@@ -31,7 +31,7 @@ später aus der API.
 
 ## Screens / Views
 
-### Screen: Jarvis Chat (Single View, 3-spaltig)
+### Screen: KI Fabrik Scout Chat (Single View, 3-spaltig)
 - **Purpose**: Nutzer stellt Fragen zur Modellfabrik; erhält quellenbelegte Antworten mit
   Confidence-Ampel; prüft Belege im rechten Inspektor.
 - **Layout**: Vollhöhen-Container (Prototyp fix 1360×868, real fluid/responsive), Spalten:
@@ -41,7 +41,7 @@ später aus der API.
 
 #### Komponente: Topbar
 - Höhe 60px, Hintergrund `#ffffff`, `border-bottom: 1px solid rgba(0,0,0,0.08)`, `padding: 0 22px`.
-- **Links**: MDZ-Icon (`assets/MDZ_Icon.jpg`, 34×34, `border-radius:9px`) + Wortmarke **„Jarvis"**
+- **Links**: MDZ-Icon (`assets/MDZ_Icon.jpg`, 34×34, `border-radius:9px`) + Wortmarke **„KI Fabrik Scout"**
   (Inter 16px/700, `#1a1a1a`, `letter-spacing:-0.01em`). *(Kein Untertitel, kein
   Collection-Selector — wurde bewusst entfernt.)*
 - **Rechts** (Flex, `gap:10px`): 
@@ -60,7 +60,7 @@ später aus der API.
 #### Komponente: Konversation (Mitte)
 - Hintergrund `#f7f6f3`; Scrollbereich `padding:30px 26px 8px`; innerer Inhalt `max-width:660px; margin:0 auto`; Nachrichten in Spalte mit `gap:22px`.
 - **User-Bubble** (rechtsbündig, `flex-direction:row-reverse`): Avatar „RJ“ 30×30 (`radius:9px`, BG `#f0eeea`, Border `rgba(0,0,0,0.08)`); Bubble BG `rgba(226,0,26,0.08)`, Border `rgba(226,0,26,0.2)`, Text `#222` 14px/1.6, `radius:15px` mit `border-top-right-radius:5px`, `padding:11px 15px`.
-- **Assistant-Message** (linksbündig): Jarvis-Avatar = MDZ-Icon 30×30 (`radius:9px`, `box-shadow:0 0 0 1px rgba(226,0,26,0.25)`).
+- **Assistant-Message** (linksbündig): KI Fabrik Scout-Avatar = MDZ-Icon 30×30 (`radius:9px`, `box-shadow:0 0 0 1px rgba(226,0,26,0.25)`).
   - **Confidence-Ampel** (über der Bubble): drei Punkte (grün `#2f9e44` aktiv, gelb `rgba(227,160,8,.28)`, rot `rgba(240,96,58,.28)` gedimmt) + Text „Hohe Konfidenz · 0.82“ (11.5px/600, `#2f9e44`). BG `rgba(47,158,68,0.09)`, Border `rgba(47,158,68,0.28)`, `radius:8px`, `padding:5px 11px`, `width:fit-content`. Bei mittlerer Konfidenz: gelber Punkt aktiv, Text/Farbe `#e3a008`.
   - **Antwort-Bubble**: BG `#ffffff`, Border `rgba(0,0,0,0.08)`, `radius:14px` mit `border-top-left-radius:5px`, `padding:15px 17px`, Text `#333` 14px/1.72, `box-shadow:0 1px 2px rgba(0,0,0,0.03)`. Fettbegriffe `#111`/600.
   - **Zitat-Marker** (inline, hochgestellt): runde Buttons 18×18, `radius:50%`, JetBrains Mono 10px/600. Aktiv/primär: BG `#E2001A`, Text `#fff`. Sekundär: BG `rgba(226,0,26,0.14)`, Text `#E2001A`.
@@ -132,12 +132,12 @@ Slugs; nur die Darstellung wird lokalisiert.
 - **Keyframes**: `blink` (Caret), `tpulse` (Typing-Dots).
 
 ## Assets
-- `assets/MDZ_Icon.jpg` — MDZ-App-Icon (rotes Platinen-Symbol), genutzt als App-Logo **und** Jarvis-Avatar.
+- `assets/MDZ_Icon.jpg` — MDZ-App-Icon (rotes Platinen-Symbol), genutzt als App-Logo **und** KI Fabrik Scout-Avatar.
 - `assets/MD_zentrum_Spreeland.png` — Logo „Mittelstand-Digital Zentrum Spreeland“ (Fußzeile). Original auch als SVG im Repo `halle-gehirn/public/MD_zentrum_Spreeland_RGB.svg`.
 - `assets/Mittelstand-Digital-BMWK.png` — BMWK-Förderlogo-Lockup (Fußzeile).
 - Icons: Lucide-Style Stroke-Icons (chat, file, bar-chart, gear, file-text) — im echten Code `lucide-preact` o. ä. verwenden.
 - Fonts: Google Fonts (Inter, JetBrains Mono) — im Repo On-Prem selbst hosten (DSGVO), nicht von Google laden.
 
 ## Files
-- `Jarvis Wissensbasis.dc.html` — der vollständige HTML-Prototyp (alle Styles inline, ein Screen).
-- Referenzen im Repo `halle-gehirn`: `docs/taxonomie.md` (Facetten/Vokabular), `data/manifest.yaml` & `data/vokabular.yaml` (echte Werte), `CLAUDE.md` (Stack, SSE, Confidence-Schwellen, Bot-Name „Jarvis“).
+- `KI Fabrik Scout Wissensbasis.dc.html` — der vollständige HTML-Prototyp (alle Styles inline, ein Screen).
+- Referenzen im Repo `halle-gehirn`: `docs/taxonomie.md` (Facetten/Vokabular), `data/manifest.yaml` & `data/vokabular.yaml` (echte Werte), `CLAUDE.md` (Stack, SSE, Confidence-Schwellen, Bot-Name „KI Fabrik Scout“).

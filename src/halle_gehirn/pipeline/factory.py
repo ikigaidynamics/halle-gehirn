@@ -13,6 +13,7 @@ import structlog
 
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.generator.ollama_client import OllamaGenerator
+from halle_gehirn.generator.openai_client import OpenAIGenerator
 from halle_gehirn.governance.audit import StructlogAuditLogger
 from halle_gehirn.observability.retrieval_logger import RetrievalJsonlLogger
 from halle_gehirn.pipeline.stages.confidence import ConfidenceGate
@@ -40,7 +41,7 @@ class QueryPipeline:
     router: KeywordRouter
     query_rewriter: QueryRewriter
     query_transformer: OllamaQueryTransformer
-    generator: OllamaGenerator
+    generator: OllamaGenerator | OpenAIGenerator
     confidence_gate: ConfidenceGate
     guardrail: PromptGuardrail
     validator: CitationValidator
@@ -67,12 +68,20 @@ def build_query_pipeline(
     s = settings or get_settings()
     router = KeywordRouter(settings=s)
 
+    # Generator basierend auf Backend-Wahl
+    if s.llm_backend == "openai":
+        generator: OllamaGenerator | OpenAIGenerator = OpenAIGenerator(settings=s)
+        logger.info("using_openai_backend", base_url=s.openai_base_url)
+    else:
+        generator = OllamaGenerator(settings=s)
+        logger.info("using_ollama_backend", url=s.ollama_url)
+
     pipeline = QueryPipeline(
         retriever=HybridRetriever(settings=s, router=router),
         router=router,
         query_rewriter=QueryRewriter(settings=s),
         query_transformer=OllamaQueryTransformer(settings=s),
-        generator=OllamaGenerator(settings=s),
+        generator=generator,
         confidence_gate=ConfidenceGate(settings=s),
         guardrail=PromptGuardrail(),
         validator=CitationValidator(),

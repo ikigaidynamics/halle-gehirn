@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from starlette.responses import StreamingResponse
+from starlette.responses import FileResponse, StreamingResponse
 
 from halle_gehirn.api.admin_schemas import (
     BestandResponse,
@@ -50,6 +51,7 @@ from halle_gehirn.manifest.editor import (
     save_vokabular_entry,
     validate_entry,
 )
+from halle_gehirn.config import get_settings
 from halle_gehirn.pipeline.ingest import ManifestEntry, compute_source_hash
 from halle_gehirn.manifest.chunk_overrides import set_chunk_disabled
 from halle_gehirn.vector_store.qdrant_client import (
@@ -339,6 +341,8 @@ async def get_dokument_chunks(
             token_count=len(text.split()),
             source_hash=p.get("source_hash", ""),
             disabled=bool(p.get("disabled")),
+            figure_refs=p.get("figure_refs", []),
+            figure_captions=p.get("figure_captions", []),
         ))
 
     return DokumentChunksResponse(
@@ -347,6 +351,35 @@ async def get_dokument_chunks(
         chunk_count=len(details),
         chunks=details,
     )
+
+
+# ── GET /figures/{source_hash}/{filename} ──
+
+_HASH_RE = re.compile(r"^[a-f0-9]+$")
+_FIGURE_RE = re.compile(r"^fig_\d{3}\.png$")
+
+
+@router.get("/figures/{source_hash}/{filename}")
+async def get_figure(
+    source_hash: str,
+    filename: str,
+    _key: Annotated[str, Depends(verify_api_key)],
+) -> FileResponse:
+    """Liefert eine extrahierte Abbildung als PNG."""
+    if not _HASH_RE.match(source_hash):
+        raise HTTPException(status_code=400, detail="Ungueltiger source_hash.")
+    if not _FIGURE_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Ungueltiger Dateiname.")
+
+    figures_base = Path(get_settings().figures_dir).resolve()
+    file_path = (figures_base / source_hash / filename).resolve()
+
+    if not file_path.is_relative_to(figures_base):
+        raise HTTPException(status_code=400, detail="Ungueltiger Pfad.")
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Abbildung nicht gefunden.")
+
+    return FileResponse(file_path, media_type="image/png")
 
 
 # ── PATCH /dokumente/{datei}/chunks/{chunk_index} ──

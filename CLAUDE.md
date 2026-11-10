@@ -1,7 +1,7 @@
 # CLAUDE.md — Halle-Gehirn
 
 > Kanonische Stack- und Architektur-Definition für **Halle-Gehirn**. Claude Code liest sie
-> zu Beginn **jeder** Aufgabe. Anzeigename des Bots: **Jarvis**. Package: `halle_gehirn`.
+> zu Beginn **jeder** Aufgabe. Anzeigename des Bots: **KI Fabrik Scout**. Package: `halle_gehirn`.
 > Collection: `halle_wissen`. Sprache: `de`.
 
 ---
@@ -152,7 +152,7 @@ ScalarQuantization(INT8), Payload-Indizes für alle Facetten. Hybrid-Query via Q
 Alle Parameter in `.env` (Vorlage: `.env.example`), typisiert in `config.py`. Kernwerte:
 `LLM_MODEL=qwen3:14b` · `EMBEDDING_MODEL=qwen3-embedding:0.6b` · `QDRANT_COLLECTION=halle_wissen` ·
 `USE_CONTEXTUAL_RETRIEVAL=true` · `FUSION=rrf` · `CONF_GREEN=0.7`/`CONF_YELLOW=0.4` ·
-`ON_PREM=true` · `BOT_NAME=Jarvis` · `PRIMARY_COLOR=<TODO BTU-Hausfarbe>`.
+`ON_PREM=true` · `BOT_NAME=KI Fabrik Scout` · `PRIMARY_COLOR=<TODO BTU-Hausfarbe>`.
 
 ### Port-Zuordnung (kanonisch)
 

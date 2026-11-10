@@ -26,11 +26,21 @@ export interface Source {
   grad: string;
 }
 
+export interface LatencyStats {
+  rewrite_ms: number;
+  embed_ms: number;
+  search_ms: number;
+  rerank_ms: number;
+  generate_ms: number;
+  total_ms: number;
+}
+
 export interface DoneEvent {
   confidence: string;
   sources: Source[];
   final_answer: string;
   latency_ms: number;
+  stats?: LatencyStats;
   grounding_score?: number;
   grounded?: boolean;
   grounding_threshold?: number;

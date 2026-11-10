@@ -17,6 +17,10 @@ import type {
   ReadyResponse,
   VokabularResponse,
 } from "../api/types";
+import {
+  invalidateChunksCache,
+  invalidateAllChunksCache,
+} from "../components/ChunkViewer";
 
 // ── Bestand ──
 export const bestandData = signal<BestandResponse | null>(null);
@@ -63,7 +67,7 @@ export async function removeDokument(
   deleteFile: boolean,
 ): Promise<DokumentDeleteResponse> {
   const result = await deleteDokument(datei, deleteFile);
-  // Refresh bestand after delete
+  invalidateChunksCache(datei);
   await loadBestand();
   return result;
 }
@@ -105,7 +109,7 @@ export async function runIngest(
       () => {
         ingestRunning.value = false;
         _cancelStream = null;
-        // Refresh bestand after ingest completes
+        invalidateAllChunksCache();
         loadBestand();
       },
     );
@@ -121,4 +125,5 @@ export function cancelIngest(): void {
     _cancelStream = null;
   }
   ingestRunning.value = false;
+  invalidateAllChunksCache();
 }

@@ -18,6 +18,20 @@ anlage:
   vier_gewinnt:           "Roboterlösung 'Vier gewinnt' (MRK + KI)"
   ftf_agv:                "Fahrerloses Transportsystem / AGV"
   gestenerkennung:        "Assistenzsystem mit Gestenerkennung"
+  handarbeitsplatz:       "Energieeffizienter Handarbeitsplatz"
+  fischertechnik_cybersec: "Cybersicherheit für KMU (Fischertechnik-Demonstrator)"
+  lta4glasses:            "LTA4Glasses – Mixed Reality Qualifizierung"
+  industrial_metaverse:   "Industrial Metaverse"
+  smartmanual:            "SmartManual"
+  handschuh_scanner:      "Handschuh-Scanner"
+  raise3d:                "Additive Fertigung mit Raise3D"
+  mrk_cobot:              "KI-basierte Mensch-Roboter-Kollaboration"
+  lta2go:                 "LTA2Go – Digitale Qualifizierung"
+  mobiles_robotersystem:  "Mobiles Robotersystem"
+  nao:                    "NAO – Humanoider Roboter"
+  nxtq_ar:                "nxtQ AR-Brille"
+  pick_by_light:          "Pick By Light"
+  romer_arm:              "Romer Absolute Arm"
   # Roboter-/Werkzeugmaschinenlabor
   kuka_industrieroboter:  "KUKA-Industrieroboter (Roboterlabor)"
   leichtbauroboter:       "Leichtbauroboter / Cobot"
@@ -27,7 +41,7 @@ anlage:
   # Aus dem Meeting genannt, auf der Website nicht verifiziert:
   predictive_maintenance: "Predictive-Maintenance-Prüfstand"
   ur10e:                  "Universal Robots UR10e (Modellfabrik)"
-  datenhandschuhe: "Datenhandschuhe"
+  datenhandschuhe:        "Datenhandschuhe"
 
 # ── projekt · benannte Vorhaben (Startbestand) ──
 projekt:
