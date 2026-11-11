@@ -14,7 +14,8 @@
 .NOTES
     Voraussetzungen:
       - Python venv aktiviert ODER uv verfuegbar
-      - Node-Abhaengigkeiten installiert:
+      - Node + npm im PATH (Node LTS empfohlen; Vite 6 unterstuetzt ^18/^20/^22)
+      - Node-Abhaengigkeiten werden bei Bedarf automatisch installiert:
           cd frontend/jarvis-widget && npm install
           cd frontend/jarvis-wissensbestand && npm install
       - Qdrant + Ollama extern gestartet
@@ -65,6 +66,26 @@ Stop-PortProcess $API_PORT
 Stop-PortProcess $CHAT_PORT
 Stop-PortProcess $WISSEN_PORT
 
+# -- Node-Dependencies pruefen: lokales Vite MUSS vorhanden sein --
+# Fehlt node_modules, faellt npx auf seinen globalen Download-Cache
+# (%LOCALAPPDATA%\npm-cache\_npx) zurueck, der defekt sein kann
+# -> ERR_MODULE_NOT_FOUND. Siehe plans/fix-wissensbestand-vite-startup.md
+function Ensure-NodeDeps($relDir) {
+    $dir = Join-Path $root $relDir
+    if (-not (Test-Path (Join-Path $dir "node_modules\vite"))) {
+        Write-Host "  Installiere npm-Abhaengigkeiten in $relDir ..." -ForegroundColor Yellow
+        Push-Location $dir
+        npm install
+        $code = $LASTEXITCODE
+        Pop-Location
+        if ($code -ne 0) {
+            throw "npm install in $relDir fehlgeschlagen (Exit $code). Bitte manuell ausfuehren und erneut starten."
+        }
+    }
+}
+Ensure-NodeDeps "frontend/jarvis-widget"
+Ensure-NodeDeps "frontend/jarvis-wissensbestand"
+
 Write-Host ""
 Write-Host "  API              http://localhost:$API_PORT"
 Write-Host "  Chat-Frontend    http://localhost:$CHAT_PORT"
@@ -83,14 +104,14 @@ $apiJob = Start-Job -Name "API" -ScriptBlock {
 $chatJob = Start-Job -Name "Chat" -ScriptBlock {
     param($r, $p)
     Set-Location "$r/frontend/jarvis-widget"
-    & npx vite --port $p --strictPort --host 2>&1
+    & npm run dev -- --port $p --strictPort --host 2>&1
 } -ArgumentList $root, $CHAT_PORT
 
 # -- 3. Wissensbestand (Preact / Vite) --
 $wissenJob = Start-Job -Name "Wissensbestand" -ScriptBlock {
     param($r, $p)
     Set-Location "$r/frontend/jarvis-wissensbestand"
-    & npx vite --port $p --strictPort --host 2>&1
+    & npm run dev -- --port $p --strictPort --host 2>&1
 } -ArgumentList $root, $WISSEN_PORT
 
 Write-Host "Dienste gestartet. Druecke Ctrl+C zum Beenden aller Dienste." -ForegroundColor Green

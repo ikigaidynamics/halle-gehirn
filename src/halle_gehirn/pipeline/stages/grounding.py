@@ -13,10 +13,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-import ollama
 import structlog
 
 from halle_gehirn.config import Settings, get_settings
+from halle_gehirn.generator.llm_client import get_llm_client
 from halle_gehirn.llm_utils import strip_think_tags
 
 logger = structlog.get_logger(__name__)
@@ -64,8 +64,8 @@ class FaithfulnessChecker:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
-        self._client = ollama.Client(host=self._settings.ollama_url)
-        self._model = self._settings.llm_model
+        self._client = get_llm_client(settings=self._settings)
+        self._model = self._client.model
         self._threshold = self._settings.grounding_threshold
 
     async def check(

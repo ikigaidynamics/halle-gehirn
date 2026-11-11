@@ -80,11 +80,17 @@ class HealthResponse(BaseModel):
 
 
 class ReadyResponse(BaseModel):
-    """Response fuer /ready."""
+    """Response fuer /ready.
+
+    ``ollama`` ist der Status des aktiven LLM-Backends (bei
+    ``llm_backend=openai`` likewise, Rueckwaertskompatibilitaet
+    der Frontends).
+    """
 
     status: str
     qdrant: bool = False
     ollama: bool = False
+    llm_backend: str = "ollama"
 
 
 class AdminResponse(BaseModel):

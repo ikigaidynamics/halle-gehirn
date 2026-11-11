@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     ollama_urls: str = ""  # Komma-separierte Fallback-URLs (UI-waehlbar)
     llm_model: str = "qwen3:14b"
     # OpenAI-kompatibles Backend (vLLM, text-generation-inference, etc.)
-    openai_base_url: str = ""  # z.B. http://141.46.73.22:8080/v1
+    openai_base_url: str = ""  # z.B. http://141.43.76.22:8080/v1 (GPU-Host)
     openai_api_key: str = ""  # leer fuer lokale Server ohne Auth
     openai_model: str = ""  # Modellname fuer OpenAI-API
     # Embedding-Backend: ollama, fastembed (lokal) oder openai (OpenAI-kompatible API)

@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 
-import ollama
 import structlog
 
 from halle_gehirn.config import Settings, get_settings
+from halle_gehirn.generator.llm_client import get_llm_client
 
 logger = structlog.get_logger(__name__)
 
@@ -39,7 +39,8 @@ class ConversationMemory:
         self._settings = settings or get_settings()
         self._turns: list[dict[str, str]] = []
         self._summary: str = ""
-        self._client = ollama.Client(host=self._settings.ollama_url)
+        self._client = get_llm_client(settings=self._settings)
+        self._model = self._client.model
 
     def add_turn(self, role: str, content: str) -> None:
         """Fuegt einen Turn hinzu.
@@ -96,7 +97,7 @@ class ConversationMemory:
         try:
             response = await asyncio.to_thread(
                 self._client.chat,
-                model=self._settings.llm_model,
+                model=self._model,
                 messages=[{"role": "user", "content": prompt}],
                 think=False,
                 options={"temperature": 0.0, "num_predict": 256},

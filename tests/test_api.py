@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from halle_gehirn.api.main import create_app
 from halle_gehirn.config import Settings, get_settings
+from halle_gehirn.generator.openai_client import GeneratorError
 from halle_gehirn.pipeline.orchestrator import QueryResult
 
 
@@ -109,12 +110,12 @@ class TestHealthEndpoints:
         return_value=True,
     )
     @patch(
-        "halle_gehirn.api.routes.health._check_ollama",
+        "halle_gehirn.api.routes.health._check_llm",
         new_callable=AsyncMock,
         return_value=True,
     )
     def test_ready_all_ok(
-        self, _mock_ollama: AsyncMock, _mock_qdrant: MagicMock,
+        self, _mock_llm: AsyncMock, _mock_qdrant: MagicMock,
     ) -> None:
         """GET /ready mit allen Diensten verfuegbar."""
         with _patched_app() as client:
@@ -130,16 +131,17 @@ class TestHealthEndpoints:
         return_value=False,
     )
     @patch(
-        "halle_gehirn.api.routes.health._check_ollama",
+        "halle_gehirn.api.routes.health._check_llm",
         new_callable=AsyncMock,
         return_value=True,
     )
     def test_ready_qdrant_down(
-        self, _mock_ollama: AsyncMock, _mock_qdrant: MagicMock,
+        self, _mock_llm: AsyncMock, _mock_qdrant: MagicMock,
     ) -> None:
-        """GET /ready mit Qdrant nicht erreichbar."""
+        """GET /ready mit Qdrant nicht erreichbar -> 503."""
         with _patched_app() as client:
             resp = client.get("/ready")
+            assert resp.status_code == 503
             data = resp.json()
             assert data["status"] == "not_ready"
             assert data["qdrant"] is False
@@ -237,6 +239,34 @@ class TestChatEndpoints:
             assert len(token_events) == 2
             assert len(done_events) == 1
             assert done_events[0]["confidence"] == "gruen"
+
+    def test_chat_stream_error_event_on_generator_failure(self) -> None:
+        """Pipeline-Fehler im Stream -> error-Event statt ASGI-Abbruch."""
+        orch = MagicMock()
+
+        async def failing_stream(**kwargs: Any) -> Any:
+            yield {"type": "token", "content": "Anfang"}
+            raise GeneratorError("Connection error: All connection attempts failed")
+
+        orch.run_stream = failing_stream
+
+        with _patched_app(orchestrator=orch) as client:
+            resp = client.post(
+                "/chat/stream",
+                json={"query": "Testfrage"},
+            )
+            assert resp.status_code == 200
+            raw_lines = [
+                raw for raw in resp.text.strip().split("\n\n")
+                if raw.startswith("data: ")
+            ]
+            events = [
+                json.loads(raw.removeprefix("data: "))
+                for raw in raw_lines
+            ]
+            error_events = [e for e in events if e["type"] == "error"]
+            assert len(error_events) == 1
+            assert "Fehler" in error_events[0]["message"]
 
     def test_chat_empty_query_returns_422(self) -> None:
         """POST /chat mit leerer Query -> 422 Validation Error."""

@@ -36,9 +36,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(dev=True)
     settings = get_settings()
 
+    llm_target = (
+        settings.openai_base_url
+        if settings.llm_backend == "openai"
+        else settings.ollama_url
+    )
     logger.info(
         "startup_begin",
-        ollama=settings.ollama_url,
+        llm_backend=settings.llm_backend,
+        llm_url=llm_target,
+        embedding_backend=settings.embedding_backend,
         qdrant=settings.qdrant_url,
     )
 

@@ -108,6 +108,8 @@ export function streamChat(
               callbacks.onToken(event.content);
             } else if (event.type === "done") {
               callbacks.onDone(event as DoneEvent);
+            } else if (event.type === "error") {
+              callbacks.onError(new Error(event.message ?? "Interner Fehler"));
             }
           } catch {
             // skip malformed SSE lines

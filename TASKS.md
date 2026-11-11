@@ -172,6 +172,19 @@ Backlog je Phase. `[x]` erledigt · `[ ]` offen. Reihenfolge des ersten Builds:
       Abbildungs-Thumbnails. Embed-Phase: Queue-basierte Thread-Kommunikation.
       11 neue Merge-Tests + 1 Chunker-Test aktualisiert; ruff+mypy gruen.
 
+- [x] **WP11 — SSE-Haertung bei LLM-Connection-Fehlern:** Chat-Stream brach mit
+      ungefangenem `GeneratorError` (ASGI-Traceback, Client sieht abgebrochenen
+      Stream). `api/routes/chat.py` faengt Pipeline-Fehler jetzt ab und sendet
+      SSE-`error`-Event (Frontend `chat.ts` → `onError`). `/ready` liefert bei
+      nicht-verfuegbarem Backend HTTP 503 statt 200 (Readiness-Probe-Konvention).
+      Root-Cause des Vorfalls war ein Tippfehler in `OPENAI_BASE_URL`
+      (141.46.73.x statt 141.43.76.x). 2 Tests aktualisiert/ergaenzt.
+      **Rezidiv 2026-11-11:** Tippfehler erneut in `.env`
+      (`http://141.46.73.22:8080/v1`); GPU-LLM laeuft auf
+      `http://141.43.76.22:8080/v1` (Modell `swift-1.5-iq3_s`).
+      Doku-Kommentar in `config.py` berichtigt; `.env` muss manuell
+      korrigiert werden (Agent darf `.env` nicht aendern).
+
 **Zwischenaudit vollstaendig abgearbeitet (WP1–WP7).** Offen bleiben nur
 4 vorbestehende Test-Failures (Docling-Tabellen + Reranker-Fallback,
 Umgebungs-Drift, unabhaengig vom Audit) und ein latenter mypy-Hinweis

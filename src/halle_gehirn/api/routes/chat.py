@@ -79,13 +79,31 @@ async def chat_stream(
     orchestrator = request.app.state.orchestrator
 
     async def event_generator() -> AsyncIterator[str]:
-        """Generiert SSE-Events aus dem Orchestrator-Stream."""
-        async for event in orchestrator.run_stream(
-            query=body.query,
-            session_id=body.session_id,
-            filters=body.filters,
-        ):
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        """Generiert SSE-Events aus dem Orchestrator-Stream.
+
+        Pipeline-Fehler (z.B. GeneratorError bei LLM-Connection-Timeouts)
+        werden als ``error``-Event an den Client kommuniziert, damit der
+        Stream sauber endet statt mit einem ASGI-Traceback abzubrechen.
+        """
+        try:
+            async for event in orchestrator.run_stream(
+                query=body.query,
+                session_id=body.session_id,
+                filters=body.filters,
+            ):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except GeneratorExit:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "chat_stream_failed", query=body.query[:80], error=str(exc),
+            )
+            error_event = {
+                "type": "error",
+                "message": "Interner Fehler bei der Antwort-Generierung. "
+                "Bitte in Kuerze erneut versuchen.",
+            }
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
