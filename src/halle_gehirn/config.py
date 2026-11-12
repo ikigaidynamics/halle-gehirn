@@ -117,6 +117,9 @@ class Settings(BaseSettings):
     # ``chat/`` und ``admin/`` (vite build). Leer = aus (Dev-Modus nutzt
     # Vite-Dev-Server auf 3000/3001).
     static_dir: str = ""
+    # Standalone-Bundle: Chat-URL beim Start im Standardbrowser oeffnen
+    # (nur im Bundle-Entry Point wirksam). Dev-Default aus.
+    open_browser: bool = False
     api_base_url: str = ""  # leer → wird aus api_port abgeleitet
     admin_api_key: str = "change-me-in-production"
     cors_origins: str = "http://localhost:3000,http://localhost:3001"

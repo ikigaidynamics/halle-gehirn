@@ -1,12 +1,14 @@
 # Halle-Gehirn — Standalone-App (KI Fabrik Scout)
 
 Portabler Ordner: **kein Python, kein Node, keine Installation nötig.**
-Einfach `start.cmd` doppelklicken — die App läuft auf **Port 8001**:
+Einfach `start.cmd` doppelklicken — der **Chat öffnet sich automatisch im
+Standardbrowser** und die App läuft auf **Port 8001**:
 
 - Chat: `http://localhost:8001/`
 - Wissensbestand (Admin): `http://localhost:8001/admin/`
 - API-Gesundheit: `http://localhost:8001/health` und `/ready`
 
+Das automatische Öffnen ist abschaltbar (`OPEN_BROWSER=false` in `.env`).
 Beenden: Konsolenfenster schließen (Strg+C).
 
 ## Voraussetzungen auf dem Netzwerk (extern, nicht im Bundle)

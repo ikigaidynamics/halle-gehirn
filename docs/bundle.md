@@ -33,20 +33,20 @@ sind vier Dienste; LLM und Embeddings wahlweise **Ollama** oder eine
 
 | Dienst         | Setting            | Beispiel                       |
 |----------------|--------------------|--------------------------------|
-| Ollama (LLM)   | `LLM_BACKEND=ollama`, `OLLAMA_URL` | `http://141.43.76.22:11434` |
+| Ollama (LLM)   | `LLM_BACKEND=ollama`, `OLLAMA_URL` | `http://141.43.76.20:11434` |
 | Ollama (Embed) | `EMBEDDING_BACKEND=ollama` | qwen3-embedding:0.6b   |
-| Qdrant         | `QDRANT_URL`       | `http://141.43.76.22:6335`     |
+| Qdrant         | `QDRANT_URL`       | `http://141.43.76.22:6333`     |
 | Docling Serve  | `DOCLING_SERVE_URL`| `http://141.43.76.21:5001`     |
 
-**Variante B — OpenAI-kompatible API:**
+**Variante B — OpenAI-kompatible API (Default im Bundle):**
 
 | Dienst               | Setting            | Beispiel                       |
 |----------------------|--------------------|--------------------------------|
 | LLM (OpenAI-API)     | `LLM_BACKEND=openai`, `OPENAI_BASE_URL` | `http://141.43.76.22:8080/v1` |
-| OpenAI (LLM-Modell)  | `OPENAI_MODEL` (leer = `LLM_MODEL`) | z.B. `qwen3-14b` |
+| OpenAI (LLM-Modell)  | `OPENAI_MODEL` (leer = `LLM_MODEL`) | z.B. `qwen3:8b` |
 | Embeddings (OpenAI-API) | `EMBEDDING_BACKEND=openai`, `EMBEDDING_OPENAI_BASE_URL` | `http://141.43.76.22:8081/v1` |
-| OpenAI (Embed-Modell)| `EMBEDDING_OPENAI_MODEL` (leer = `EMBEDDING_MODEL`) | z.B. `qwen3-embedding-0.6b` |
-| Qdrant               | `QDRANT_URL`       | `http://141.43.76.22:6335`     |
+| OpenAI (Embed-Modell)| `EMBEDDING_OPENAI_MODEL` (leer = `EMBEDDING_MODEL`) | z.B. `qwen3-embedding` |
+| Qdrant               | `QDRANT_URL`       | `http://141.43.76.22:6333`     |
 | Docling Serve        | `DOCLING_SERVE_URL`| `http://141.43.76.21:5001`     |
 
 API-Schluessel (falls der Server Auth erwartet): `OPENAI_API_KEY` bzw.
@@ -84,8 +84,9 @@ Ablauf:
 
 1. ZIP entpacken (beliebiger Ort, keine Installation).
 2. `.env` pruefen: Adressen der externen Dienste eintragen.
-3. `start.cmd` ausfuehren → Chat `http://localhost:8001/`,
-   Admin `http://localhost:8001/admin/`.
+3. `start.cmd` ausfuehren → der Chat `http://localhost:8001/` oeffnet sich
+   automatisch im Standardbrowser (`OPEN_BROWSER=false` in `.env` schaltet das
+   ab); Admin manuell: `http://localhost:8001/admin/`.
 4. Diagnose: `http://localhost:8001/ready` zeigt Qdrant-Erreichbarkeit und den
    aktiven LLM-Backend (Ollama `/api/tags` bzw. OpenAI `/v1/models`).
 
@@ -98,6 +99,11 @@ Hinweise: SmartScreen/AV-Ausnahme kann beim ersten Start noetig sein
 - `src/halle_gehirn/bundle/entrypoint.py`: setzt CWD = EXE-Verzeichnis
   (pydantic-settings findet `.env`), definiert `TIKTOKEN_CACHE_DIR`,
   `DATA_GYM_CACHE_DIR`, `FASTEMBED_CACHE_PATH` unter `caches/`, startet Uvicorn.
+- Auto-Open: bei `OPEN_BROWSER=true` (Bundle-Default in `env.template`)
+  oeffnet ein Daemon-Thread nach ~1,5 s `settings.api_base_url` via
+  `webbrowser.open()` — ohne Health-Gate; Browser-Fehler werden nur geloggt.
+  Dev-Default ist `false` (`config.py`), die Logik liegt ausschliesslich im
+  Bundle-Entry Point.
 - `api/main.py` `_mount_static()`: bei gesetztem `STATIC_DIR` Mount `/admin`
   (Admin-SPA) und `/` (Chat-SPA); API-Routen sind zuerst registriert und
   gewinnen gegen die SPA-Mounts.

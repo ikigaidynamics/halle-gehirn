@@ -5,9 +5,6 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [preact(), tailwindcss()],
   base: "/admin/",
-  build: {
-    outDir: "dist",
-  },
   server: {
     port: 3001,
     strictPort: true,
@@ -18,6 +15,7 @@ export default defineConfig({
     },
   },
   build: {
+    outDir: "dist",
     target: "es2020",
     minify: "esbuild",
   },

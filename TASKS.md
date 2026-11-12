@@ -216,6 +216,9 @@ in `manual_loader._extract_single` (Extractor-Protocol ohne do_ocr).
   - [x] OpenAI-Backend im Bundle verifiziert (Smoke-Test gegen OpenAI-Stub:
         `/ready` prueft `/v1/models`, `using_openai_backend` — Blocker war nur
         Qdrant-Erreichbarkeit; Stub: `scripts/openai_stub_server.py`)
+  - [x] Chat oeffnet sich beim Bundle-Start automatisch im Standardbrowser
+        (`OPEN_BROWSER=true` in `env.template`; Daemon-Thread im Entry Point,
+        ohne Health-Gate; Dev-Default `false`)
   - [ ] Signierung der EXE (SmartScreen-Hinweis nur in README)
   - [ ] Bundle-Smoke-Test als CI-Schritt automatisieren
 

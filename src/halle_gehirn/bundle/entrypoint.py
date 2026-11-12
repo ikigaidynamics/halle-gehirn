@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
+import time
+import webbrowser
 from pathlib import Path
 
 
@@ -57,6 +60,29 @@ def _prime_tiktoken_registry() -> None:
         )
 
 
+def open_browser_when_up(url: str, delay_s: float = 1.5) -> None:
+    """Oeffnet ``url`` im Standardbrowser (Daemon-Thread, ohne Health-Gate).
+
+    Kurze Verzoegerung abwarten, damit Uvicorn die Ports gebunden hat;
+    die SPA-Seite laedt sich dann im Browser (ggf. einmal neu laden).
+    Schaetzt der Browser den Host nicht, darf die App nicht sterben:
+    Fehler werden nur geloggt.
+
+    Args:
+        url: Vollstaendige Chat-URL (z.B. ``http://localhost:8001/``).
+        delay_s: Sekunden bis zum Oeffnen.
+    """
+    import structlog
+
+    logger = structlog.get_logger(__name__)
+    time.sleep(delay_s)
+    try:
+        webbrowser.open(url)
+        logger.info("bundle_browser_opened", url=url)
+    except Exception as exc:  # Browser-Start ist best-effort
+        logger.warning("bundle_browser_open_failed", url=url, error=str(exc))
+
+
 def main() -> None:
     """Startet die uvicorn-Server-Instanz der Halle-Gehirn-API."""
     prepare_environment()
@@ -68,6 +94,12 @@ def main() -> None:
     from halle_gehirn.config import get_settings
 
     settings = get_settings()
+    if settings.open_browser:
+        threading.Thread(
+            target=open_browser_when_up,
+            args=(settings.api_base_url,),
+            daemon=True,
+        ).start()
     uvicorn.run(
         app,
         host="0.0.0.0",
