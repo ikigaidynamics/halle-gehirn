@@ -11,6 +11,9 @@ requires-python = ">=3.12"
 license = { text = "Proprietary" }
 authors = [{ name = "Robin Jost" }]
 
+# Kern-Dependencies = reine Query-/Serve-Runtime (Build des Standalone-Bundles).
+# Bewusst FREI von docling/pymupdf4llm (Extraktion laeuft im Bundle ueber
+# Docling Serve, extern) und von ragas/datasets (nur Eval).
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
@@ -19,8 +22,6 @@ dependencies = [
     "pydantic-settings",
     "structlog",
     "qdrant-client",
-    "docling",
-    "pymupdf4llm",
     "fastembed",
     "ollama",
     "tiktoken",
@@ -28,11 +29,18 @@ dependencies = [
     "trafilatura",
     "opentelemetry-sdk",
     "opentelemetry-instrumentation-fastapi",
-    "ragas",
-    "datasets",
 ]
 
 [project.optional-dependencies]
+ingest = [
+    # Lokale Extraktion (Dev-Workflow); im Bundle ersetzt durch Docling Serve.
+    "docling",
+    "pymupdf4llm",
+]
+eval = [
+    "ragas",
+    "datasets",
+]
 js = [
     "playwright",
 ]
@@ -48,6 +56,8 @@ dev = [
     "types-requests",
     "types-PyYAML",
     "reportlab",
+    "pyinstaller",
+    "halle-gehirn[ingest,eval]",
 ]
 
 [tool.hatch.build.targets.wheel]

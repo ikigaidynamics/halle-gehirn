@@ -14,11 +14,13 @@ import time
 from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from halle_gehirn.api.routes import admin, admin_wissen, chat, health
@@ -175,7 +177,39 @@ def create_app() -> FastAPI:
     app.include_router(admin.router)
     app.include_router(admin_wissen.router)
 
+    # Statische SPA-Builds (Standalone-Bundle). ZUERST /admin mounten,
+    # damit der Chat-Mount auf "/" die Admin-Routen nicht verdeckt —
+    # API-Router werden vor Mounts gematcht, Reihenfolge der Mounts
+    # untereinander ist daher entscheidend.
+    _mount_static(app, settings.static_dir)
+
     return app
+
+
+def _mount_static(app: FastAPI, static_dir: str) -> None:
+    """Mounted die statischen Frontend-Builds (Chat + Wissensbestand).
+
+    Erwartete Struktur: ``{static_dir}/chat/`` und ``{static_dir}/admin/``
+    (jeweils ``vite build``-Output). Fehlende Ordner werden uebersprungen,
+    damit teilweise Deployments moeglich sind.
+
+    Args:
+        app: FastAPI-App.
+        static_dir: Basisordner; leer = statisches Serving deaktiviert.
+    """
+    if not static_dir:
+        return
+    base = Path(static_dir)
+    admin_dir = base / "admin"
+    if admin_dir.is_dir():
+        app.mount("/admin", StaticFiles(directory=admin_dir, html=True), name="admin-spa")
+        logger.info("static_admin_mounted", path=str(admin_dir))
+    chat_dir = base / "chat"
+    if chat_dir.is_dir():
+        app.mount("/", StaticFiles(directory=chat_dir, html=True), name="chat-spa")
+        logger.info("static_chat_mounted", path=str(chat_dir))
+    if not admin_dir.is_dir() and not chat_dir.is_dir():
+        logger.warning("static_dir_configured_but_empty", path=str(base))
 
 
 app = create_app()

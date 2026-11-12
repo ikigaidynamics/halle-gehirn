@@ -19,7 +19,13 @@ data/manual/**/*
 
 # Build/Frontend
 dist/
+bundle/build/
 node_modules/
+
+# Betriebs-Logs (Laufzeit-Artefakte, nicht ins Repo)
+logs/*.log
+logs/retrieval/
+!logs/retrieval/.gitkeep
 
 # OS
 .DS_Store

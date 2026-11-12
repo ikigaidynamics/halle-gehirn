@@ -15,30 +15,22 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
-from docling.datamodel.base_models import ConversionStatus, InputFormat
-from docling.datamodel.pipeline_options import (
-    AcceleratorOptions,
-    OcrAutoOptions,
-    PdfPipelineOptions,
-    TableFormerMode,
-    TableStructureOptions,
-)
-from docling.document_converter import DocumentConverter, PdfFormatOption
 
 from halle_gehirn.config import Settings, get_settings
 from halle_gehirn.extraction.base import (
     ExtractedDoc,
     ExtractionError,
-    FigureBlock,
     PartialExtractionError,
     TableBlock,
 )
 from halle_gehirn.extraction.boilerplate import (
     clean as clean_boilerplate,
+)
+from halle_gehirn.extraction.boilerplate import (
     remove_inline_citations,
 )
 from halle_gehirn.extraction.figure_utils import (
@@ -51,8 +43,10 @@ from halle_gehirn.extraction.page_map import (
     join_pages_with_map,
     remove_cross_page_repeats,
     strip_markers_and_clean,
-    strip_page_markers,
 )
+
+if TYPE_CHECKING:
+    from docling.document_converter import DocumentConverter
 
 logger = structlog.get_logger(__name__)
 
@@ -815,6 +809,8 @@ def _check_conversion_integrity(result: Any, path: Path) -> None:
     Raises:
         PartialExtractionError: Seitenverlust ueber Schwelle.
     """
+    from docling.datamodel.base_models import ConversionStatus
+
     failed_count = len(result.errors)
     ok_count = len(result.pages)
     total = failed_count + ok_count
@@ -938,13 +934,42 @@ def _build_converter(
 ) -> DocumentConverter:
     """Erstellt einen Docling DocumentConverter aus den Settings.
 
+    Die Docling-Bibliothek wird bewusst LAZY importiert: Im
+    Bundle-Betrieb (Docling Serve extern, ``DOCLING_SERVE_URL`` gesetzt)
+    ist die lokale Lib nicht installiert und dieser Pfad wird nie
+    erreicht. Fehlt die Lib ohne Serve-URL, greift Fail-Fast mit
+    klarer Konfigurationsmeldung.
+
     Args:
         settings: Typisierte Laufzeit-Konfiguration.
         do_ocr_override: Ueberschreibt ``settings.docling_ocr`` wenn gesetzt.
 
     Returns:
         Konfigurierter DocumentConverter.
+
+    Raises:
+        ExtractionError: Docling-Lib nicht installiert (Bundle-Betrieb).
     """
+    try:
+        from docling.datamodel.base_models import InputFormat
+        from docling.datamodel.pipeline_options import (
+            AcceleratorOptions,
+            OcrAutoOptions,
+            PdfPipelineOptions,
+            TableFormerMode,
+            TableStructureOptions,
+        )
+        from docling.document_converter import (
+            DocumentConverter,
+            PdfFormatOption,
+        )
+    except ImportError as exc:
+        raise ExtractionError(
+            "Docling-Lib ist nicht installiert (Standalone-Bundle nutzt "
+            "ausschliesslich Docling Serve). Bitte DOCLING_SERVE_URL in "
+            "der .env setzen, z.B. http://docling-host:5001"
+        ) from exc
+
     table_mode = (
         TableFormerMode.ACCURATE
         if settings.docling_table_mode == "accurate"

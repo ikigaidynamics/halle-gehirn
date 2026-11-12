@@ -1,0 +1,60 @@
+# Halle-Gehirn — Standalone-App (KI Fabrik Scout)
+
+Portabler Ordner: **kein Python, kein Node, keine Installation nötig.**
+Einfach `start.cmd` doppelklicken — die App läuft auf **Port 8001**:
+
+- Chat: `http://localhost:8001/`
+- Wissensbestand (Admin): `http://localhost:8001/admin/`
+- API-Gesundheit: `http://localhost:8001/health` und `/ready`
+
+Beenden: Konsolenfenster schließen (Strg+C).
+
+## Voraussetzungen auf dem Netzwerk (extern, nicht im Bundle)
+
+Die App verbindet sich zu externen Diensten — Adressen in **`.env`** eintragen:
+
+| Dienst | .env-Schlüssel | Zweck |
+|---|---|---|
+| Qdrant | `QDRANT_URL` | Vektor-Datenbank (enthält den Index `halle_wissen`) |
+| LLM + Embeddings: **Ollama** *oder* **OpenAI-kompatible API** | Ollama: `LLM_BACKEND=ollama`, `OLLAMA_URL`, `LLM_MODEL` · OpenAI: `LLM_BACKEND=openai`, `OPENAI_BASE_URL` (+ `EMBEDDING_BACKEND=openai`, `EMBEDDING_OPENAI_BASE_URL`) | Antworten + Embeddings |
+| Docling Serve | `DOCLING_SERVE_URL` | Dokument-Extraktion bei Upload/Ingestion |
+
+Ohne diese Dienste startet die API zwar, aber `/ready` meldet Fehler und
+der Chat kann nicht antworten.
+
+## Konfiguration
+
+Alle Einstellungen in der Datei **`.env`** im Ordner (Vorlage: `env.beispiel`).
+Wichtigste Werte: `LLM_BACKEND` (+ `OLLAMA_URL` **oder** `OPENAI_BASE_URL`),
+`EMBEDDING_BACKEND`, `QDRANT_URL`, `DOCLING_SERVE_URL`, `API_PORT`.
+Nach Änderungen: App neu starten.
+
+**Sicherheit:** `ADMIN_API_KEY` in `.env` ändern, bevor der Wissensbestand
+im Netz erreichbar gemacht wird.
+
+## Ordner
+
+- `halle-gehirn.exe` + `_internal/` — App (nicht einzeln verschieben!)
+- `static/` — ausgelieferte Weboberflächen
+- `data/` — Kurationsdateien (`manifest.yaml`, `vokabular.yaml`, `figures/`)
+- `caches/` — Offline-Caches (tiktoken, FastEmbed BM25) — nötig ohne Internet
+- `logs/` — Betriebs- und Retrieval-Logs
+
+## Häufige Probleme
+
+- **SmartScreen-Warnung** („Windows hat den Schutz Ihres PCs verhindert"):
+  Auf „Weitere Informationen" → „Trotzdem ausführen" klicken. Einmalig.
+- **Virenscanner blockiert die EXE**: PyInstaller-EXEs werden gern
+  fälschlich gemeldet — Ordner in die Anti-Virus-Ausnahmeliste aufnehmen.
+- **Port 8001 belegt**: `API_PORT` in `.env` ändern, App neu starten.
+- **Chat antwortet nicht**: `/ready` im Browser öffnen — zeigt, welcher
+  externe Dienst (Qdrant / LLM-Backend) nicht erreichbar ist; `.env` prüfen.
+- **Upload/Ingestion schlägt fehl**: Docling Serve prüfen
+  (`DOCLING_SERVE_URL`, Dienst läuft auf dem Server?).
+
+## Index aktualisieren
+
+Der Wissensindex liegt in der externen Qdrant-Datenbank und wird vom
+Entwickler-Arbeitsplatz aus gebaut (`uv run python -m src.scripts.reindex`).
+Dieses Bundle nutzt den dort gepflegten Index — Dokumente nachladen kann
+der Wissensbestand direkt über Docling Serve.

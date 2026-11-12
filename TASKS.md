@@ -202,6 +202,22 @@ in `manual_loader._extract_single` (Extractor-Protocol ohne do_ocr).
 ## Phase 10 — Deployment & Observability
 - [ ] `docker-compose.yml`, `Caddyfile`, `ecosystem.config.js`
 - [ ] `observability/tracing.py` (OTEL), Prometheus/Grafana, Backup
+- [x] **Standalone-Bundle (portable App, kein Python auf Ziel-PC):**
+      `scripts/build_bundle.ps1` → `dist/halle-gehirn-app/` + ZIP (~200 MB).
+      PyInstaller-onedir-EXE (FastAPI) liefert beide Vite-Frontends statisch aus
+      (Chat `/`, Admin `/admin/`; `STATIC_DIR`-Setting). Qdrant/Docling Serve
+      extern; LLM+Embeddings wahlweise Ollama ODER OpenAI-kompatible API
+      (`LLM_BACKEND=openai`, `EMBEDDING_BACKEND=openai` — httpx-basiert,
+      bereits im Bundle enthalten). Docling-Lib per Lazy-Import + Excludes raus
+      (Bundle 366→162 MB); tiktoken-/FastEmbed-Caches offline vorgewaermte;
+      tiktoken-Registry im Entry Point gepremint. Doku: `docs/bundle.md`.
+  - [x] Lazy-Import docling_extractor (API-Import laedt kein docling/pymupdf/ragas)
+  - [x] pyproject-Extras getrennt: Kern / ingest / eval
+  - [x] OpenAI-Backend im Bundle verifiziert (Smoke-Test gegen OpenAI-Stub:
+        `/ready` prueft `/v1/models`, `using_openai_backend` — Blocker war nur
+        Qdrant-Erreichbarkeit; Stub: `scripts/openai_stub_server.py`)
+  - [ ] Signierung der EXE (SmartScreen-Hinweis nur in README)
+  - [ ] Bundle-Smoke-Test als CI-Schritt automatisieren
 
 ## Backlog (nach Eval-Baseline)
 

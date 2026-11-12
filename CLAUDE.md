@@ -116,6 +116,8 @@ halle-gehirn/
 │   ├── governance/{audit,consent,erasure}.py
 │   ├── observability/{logging_config,tracing}.py
 │   └── ui/streamlit_app.py · ingest_app.py (DEPRECATED)
+├── bundle/pyinstaller.spec      # Standalone-Bundle (siehe docs/bundle.md)
+├── src/halle_gehirn/bundle/     # entrypoint.py (EXE-Start: CWD, Caches, Registry)
 ├── frontend/
 │   ├── jarvis-widget/           # Chat-Frontend (Port 3000)
 │   └── jarvis-wissensbestand/   # Wissensbestand-Admin (Port 3001, ersetzt Streamlit)
@@ -172,6 +174,20 @@ stillschweigend auf einen anderen Port aus, sondern brechen mit Fehler ab.
 > **Hinweis:** Das Streamlit-Ingest-Tool (`ui/ingest_app.py`) ist **deprecated** und durch
 > das Wissensbestand-Frontend (Preact/Vite, Port 3001) ersetzt. Die Geschaeftslogik in
 > `manifest/editor.py` wird weiterhin vom neuen Frontend ueber die `/admin/wissen`-API genutzt.
+
+### Standalone-Bundle (portable App, kein Python auf dem Ziel-PC)
+
+`scripts/build_bundle.ps1` baut ein portables Bundle (`dist/halle-gehirn-app/` + ZIP):
+PyInstaller-onedir-EXE der FastAPI-App, die **beide** statischen Vite-Frontends
+ausliefert (Chat `/`, Admin `/admin/` — via `STATIC_DIR` + StaticFiles-Mounts,
+Port 8001). Externe Dienste auf dem Ziel-PC: Qdrant, **Docling Serve**
+(im Bundle-Betrieb einziges Extraktions-Backend; Docling-Lib ist per Lazy-Import
+und PyInstaller-Excludes NICHT im Bundle) und LLM/Embeddings wahlweise via
+**Ollama** (`LLM_BACKEND=ollama`) **oder OpenAI-kompatibler API**
+(`LLM_BACKEND=openai` + `OPENAI_BASE_URL`; Embeddings analog
+`EMBEDDING_BACKEND=openai` + `EMBEDDING_OPENAI_BASE_URL` — beide Backends
+sind im Bundle enthalten, OpenAI-Clients nutzen httpx).
+Details: **`docs/bundle.md`**.
 
 ---
 

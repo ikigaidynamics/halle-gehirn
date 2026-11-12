@@ -113,6 +113,10 @@ class Settings(BaseSettings):
 
     # ── API ──
     api_port: int = 8001
+    # Statische Frontend-Builds (Standalone-Bundle): Pfad mit Unterordnern
+    # ``chat/`` und ``admin/`` (vite build). Leer = aus (Dev-Modus nutzt
+    # Vite-Dev-Server auf 3000/3001).
+    static_dir: str = ""
     api_base_url: str = ""  # leer → wird aus api_port abgeleitet
     admin_api_key: str = "change-me-in-production"
     cors_origins: str = "http://localhost:3000,http://localhost:3001"
